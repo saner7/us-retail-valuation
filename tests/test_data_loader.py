@@ -174,3 +174,90 @@ def test_replace_ttm_overrides_yahoo_and_explains_why():
     kept, notes = dl.replace_ttm(snap, pd.DataFrame())
     assert kept["ebitda_ttm"] == -50.0
     assert "Yahoo's summary" in notes["ebitda_ttm"]
+
+
+def override_rows(**cols):
+    row = {"ticker": "TEST.IS", "field": "ebitda_ttm", "value": 90.0, "adjusted_quarter": np.nan,
+           "ttm_end": np.nan, "note": "one-off removed"}
+    row.update(cols)
+    return pd.DataFrame([row])
+
+
+def test_override_check_ok_while_adjusted_quarter_in_window():
+    q = quarterly(FOUR_QUARTERS, [10.0, 20.0, 30.0, 40.0])
+    ov = override_rows(adjusted_quarter="2025-12-31", ttm_end="2026-06-30")
+    assert dl.override_checks("TEST.IS", ov, q) == []
+    assert dl.override_checks("OTHER.IS", ov, q) == []       # other companies' overrides are ignored
+
+
+def test_override_check_flags_one_off_that_left_the_window():
+    # A new quarter (2026-09-30) pushed 2025-09-30 out of the 4-quarter window
+    q = quarterly(["2026-09-30"] + FOUR_QUARTERS, [1.0] * 5)
+    flags = dl.override_checks("TEST.IS", override_rows(adjusted_quarter="2025-09-30", ttm_end="2026-06-30"), q)
+    assert len(flags) == 1
+    field, status, comment = flags[0]
+    assert (field, status) == ("ebitda_ttm", "Suspicious")
+    assert "no longer in the TTM window" in comment
+
+
+def test_override_check_flags_newer_quarter():
+    # The one-off is still in the window, but the value was calculated for an older window
+    q = quarterly(["2026-09-30"] + FOUR_QUARTERS, [1.0] * 5)
+    flags = dl.override_checks("TEST.IS", override_rows(adjusted_quarter="2026-03-31", ttm_end="2026-06-30"), q)
+    assert len(flags) == 1 and "Recalculate" in flags[0][2]
+
+
+def test_override_flags_show_in_quality_report():
+    values, sources = build(sample_snapshot())
+    meta = {"financial_currency": "USD", "yahoo_enterprise_value": 1200.0}
+    q = dl.quality_checks("TEST.IS", values, sources, meta, sample_history(), today=datetime(2026, 6, 30),
+                          flags=[("ebitda_ttm", "Suspicious", "Stale override")])
+    row = q.set_index("field").loc["ebitda_ttm"]
+    assert row["status"] == "Suspicious" and "Stale override" in row["comment"]
+
+
+def test_overrides_file_without_optional_columns(tmp_path):
+    path = tmp_path / "overrides.csv"
+    path.write_text("ticker,field,value,note\nTEST.IS,cash,5,annual report\n")
+    ov = dl.load_overrides(path)
+    assert set(dl.OVERRIDE_COLUMNS) <= set(ov.columns)
+    assert ov.loc[0, "value"] == 5
+    assert ov["adjusted_quarter"].isna().all()
+
+
+def test_download_failure_falls_back_to_snapshot(tmp_path, monkeypatch):
+    """Fresh deploy (no cache) + Yahoo blocks the download -> committed snapshot is used and labelled."""
+    import config
+    cache, snap = tmp_path / "cache", tmp_path / "snapshot"
+    monkeypatch.setattr(config, "CACHE_DIR", cache)
+    monkeypatch.setattr(config, "SNAPSHOT_DIR", snap)
+    good = {"snapshot": sample_snapshot(), "meta": {"ticker": "TEST", "fetched_at": "2026-10-09T10:00:00"},
+            "statements": {name: pd.DataFrame() for name in dl.STATEMENTS}}
+    monkeypatch.setattr(config, "CACHE_DIR", snap)          # write the snapshot with the normal cache writer
+    dl.save_company_cache("TEST", good)
+    monkeypatch.setattr(config, "CACHE_DIR", cache)
+
+    def blocked(ticker):
+        raise RuntimeError("YFRateLimitError: Too Many Requests")
+    monkeypatch.setattr(dl, "fetch_from_yahoo", blocked)
+    raw = dl.get_company_raw("TEST")
+    assert raw["meta"]["data_source"] == "snapshot"
+    assert raw["snapshot"]["price"] == 10.0
+
+
+def test_download_failure_without_any_saved_data_raises(tmp_path, monkeypatch):
+    import config
+    import pytest
+    monkeypatch.setattr(config, "CACHE_DIR", tmp_path / "cache")
+    monkeypatch.setattr(config, "SNAPSHOT_DIR", tmp_path / "snapshot")
+    monkeypatch.setattr(dl, "fetch_from_yahoo", lambda t: (_ for _ in ()).throw(RuntimeError("offline")))
+    with pytest.raises(RuntimeError):
+        dl.get_company_raw("TEST")
+
+
+def test_committed_snapshot_covers_every_ticker():
+    """The fallback must exist for the whole peer group, or a blocked cloud deploy cannot open."""
+    import config
+    for t in config.ALL_TICKERS:
+        assert dl.load_company_cache(t, config.SNAPSHOT_DIR) is not None, t
+    assert (config.SNAPSHOT_DIR / "risk_free_rate.json").exists()

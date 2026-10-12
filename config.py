@@ -1,5 +1,6 @@
 """Project settings. Change tickers or thresholds here, not inside the code."""
 
+import os
 from pathlib import Path
 
 # --- Companies -------------------------------------------------------------
@@ -27,6 +28,10 @@ COUNTRY_RISK_PREMIUM = 0.0        # extra premium for country risk; 0 for the US
 PROJECT_DIR = Path(__file__).parent
 DATA_DIR = PROJECT_DIR / "data"
 CACHE_DIR = DATA_DIR / "cache"
+# A copy of the cache that is committed to git. Used only when the live download
+# fails and there is no local cache (e.g. a fresh cloud deploy blocked by Yahoo).
+# Refresh it with: python data_loader.py --refresh --save-snapshot
+SNAPSHOT_DIR = DATA_DIR / "snapshot"
 OVERRIDES_PATH = DATA_DIR / "manual_overrides.csv"
 
 # Re-download data only if the cached copy is older than this
@@ -60,6 +65,19 @@ CREDIT_SPREAD = 0.0125            # assumption: pre-tax cost of debt = risk-free
 TERMINAL_GROWTH = 0.025           # assumption: long-run growth, roughly long-term US inflation/GDP
 MID_YEAR_CONVENTION = True
 
+# Default assumptions = average of the last N fiscal years. Older years are still
+# shown for reference. (Target's year ending Jan-2023 was an inventory/markdown
+# year that would otherwise drag every average down.)
+DEFAULT_HISTORY_YEARS = 3
+
+# Increase in net working capital (% of revenue). Historically very volatile for
+# retailers (one inventory build swings it by 2-3% of revenue), so the default is 0.
+DEFAULT_NWC_PCT = 0.0
+
+# Revenue growth: Year 1 = growth already visible in the data (TTM revenue vs the
+# last full fiscal year), then a straight line down (or up) to the terminal growth
+# rate in the final projection year.
+
 # Sensitivity grid: WACC +/- 2% in 0.5% steps, terminal growth +/- 1% in 0.5% steps,
 # exit multiple +/- 2x in 1x steps
 SENS_WACC_RANGE, SENS_WACC_STEP = 0.02, 0.005
@@ -68,3 +86,20 @@ SENS_MULTIPLE_RANGE, SENS_MULTIPLE_STEP = 2.0, 1.0
 
 # Warn if the terminal value is more than this share of enterprise value
 TERMINAL_VALUE_WARNING = 0.75
+
+# --- Football field (Stage 4) ----------------------------------------------
+# DCF bars span every combination of base WACC +/- FF_WACC_DELTA with terminal
+# growth +/- FF_GROWTH_DELTA (Gordon) or exit multiple +/- FF_MULTIPLE_DELTA (exit).
+FF_WACC_DELTA = 0.005
+FF_GROWTH_DELTA = 0.005
+FF_MULTIPLE_DELTA = 1.0
+# Rows of the football field, top to bottom. P/B stays in the comps tables but is
+# not on the chart (see comps.MULTIPLE_NOTES).
+FOOTBALL_FIELD_ROWS = ["52w", "ev_ebitda", "pe", "ev_sales", "dcf_exit", "dcf_gordon"]
+
+# --- SEC EDGAR -------------------------------------------------------------
+# The SEC asks every automated request to identify itself in the User-Agent and
+# answers 403 to requests without a contact address. Put your own contact in an
+# environment variable, never in the code (it would end up in git history):
+#     export SEC_USER_AGENT="Your Name your@email.com"
+SEC_USER_AGENT = os.environ.get("SEC_USER_AGENT", "us-retail-valuation educational project")

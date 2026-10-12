@@ -1,5 +1,14 @@
 # US Retail Valuation: Comparable Companies + DCF
 
+<!-- ============================================================
+     FILL IN BEFORE SHARING: replace the two placeholders below.
+     ============================================================ -->
+**Live app:** _[APP LINK - paste your Streamlit Community Cloud URL here]_
+
+_[SHORT DESCRIPTION - a 2-3 sentence summary for LinkedIn readers goes here.]_
+
+---
+
 A valuation tool for **Target (TGT)**, benchmarked against **Walmart (WMT), Costco (COST),
 Kroger (KR), Dollar General (DG) and BJ's Wholesale Club (BJ)**.
 It combines a trading-comparables analysis with a discounted cash flow (DCF) model and
@@ -9,7 +18,7 @@ summarises both in a "football field" chart, the way an investment banking pitch
 > investment banking.
 
 ![App screenshot](docs/screenshot.png)
-*(screenshot to be added)*
+*Summary tab: football field, DCF results and the reverse DCF box (data downloaded 12 October 2026; share prices are the 9 October close).*
 
 ## Status
 
@@ -18,7 +27,7 @@ summarises both in a "football field" chart, the way an investment banking pitch
 | 1 | Data layer: download, cache, manual overrides, data quality report | Done |
 | 2 | Comparable companies (multiples, peer statistics, implied value) | Done |
 | 3 | DCF (FCFF projection, WACC, Gordon growth + exit multiple, sensitivity) | Done |
-| 4 | Streamlit app, football field chart, Excel export | Planned |
+| 4 | Streamlit app, football field chart, Excel export | Done |
 
 ## Methodology
 
@@ -37,6 +46,9 @@ summarises both in a "football field" chart, the way an investment banking pitch
   risk premium defaults to 0 for the US.
 - **Manual overrides**: any value can be replaced in `data/manual_overrides.csv`
   (with a source note). Every value is tagged as `auto`, `manual`, `derived` or `missing`.
+  TTM values adjusted for a one-off record the quarter that contains the one-off and the
+  TTM window they were calculated for; the data quality report flags the override as stale
+  once that quarter leaves the window or a newer quarter is reported.
 - **No invented data**: if a value cannot be found it stays `N/A` and is flagged. It is never estimated.
 
 ### Comparable companies (Stage 2)
@@ -56,9 +68,17 @@ summarises both in a "football field" chart, the way an investment banking pitch
 
 ### DCF (Stage 3)
 - **5-year projection** starting from TTM revenue (Year 1 = the next twelve months).
-  Default assumptions are historical averages (revenue growth: CAGR) and are shown next to the
-  history they come from: revenue growth, EBITDA margin, D&A, capex and NWC investment as % of
-  revenue, effective tax rate.
+  Default assumptions (all editable, each shown next to the history it comes from):
+  - D&A, capex (% of revenue) and tax rate: **average of the last 3 fiscal years**
+    (`DEFAULT_HISTORY_YEARS`). The all-years average and the latest year are shown for comparison.
+  - EBITDA margin: Year 1 = **current TTM margin with one-offs removed**, moving in a
+    **straight line to the last 3 years' average** in Year 5. Start and end margin are
+    edited separately in the app.
+  - Increase in net working capital: **0% of revenue** (`DEFAULT_NWC_PCT`), because the history
+    swings by 2-3% of revenue with a single inventory build.
+  - Revenue growth: Year 1 = TTM revenue vs the last full fiscal year (growth already visible
+    in the reported quarters), then a **straight line to the terminal growth rate** in Year 5.
+    Falls back to the historical CAGR if TTM revenue is missing.
 - **FCFF** = EBIT × (1 − tax) + D&A − capex − increase in net working capital.
 - **WACC** = E/(D+E) × cost of equity + D/(D+E) × after-tax cost of debt, with market-value weights.
   - Cost of equity (CAPM) = risk-free rate (10y Treasury, live) + beta (Yahoo) × equity risk
@@ -74,14 +94,111 @@ summarises both in a "football field" chart, the way an investment banking pitch
   Rosenbaum & Pearl, the Gordon terminal value is discounted at N − 0.5, the exit multiple
   terminal value at N (it is a sale price at the end of year N).
 - **Bridge**: EV − net debt = equity value ÷ shares = value per share, vs current price.
+- **Reverse DCF**: the WACC, terminal growth and exit multiple at which the model value equals
+  today's share price.
 - **Sensitivity tables**: WACC ±2% (0.5% steps) × terminal growth ±1% (0.5% steps), and
   WACC × exit multiple ±2x (1x steps), shown as heatmaps colored around the current price.
 - A warning is shown when the terminal value is more than 75% of enterprise value.
+
+### App, football field and Excel export (Stage 4)
+- **Streamlit app** (`app.py`) with four tabs: Summary, DCF, Comps, Data & quality. Every DCF and
+  WACC assumption is in the sidebar, with its default and the history it comes from in the help
+  text. Revenue growth and the EBITDA margin are set by a start (Year 1) and an end (Year 5)
+  value; an optional year-by-year table overrides individual years.
+- **Football field**, top to bottom: 52-week trading range, comps EV/EBITDA, P/E and EV/Sales
+  (peer 25th-75th percentile, tick at the median), DCF exit multiple and DCF Gordon growth
+  (WACC ±0.5% x exit multiple ±1x or terminal growth ±0.5%, tick at the base case), with the
+  current price as a dashed vertical line. **P/B is left out** of the chart (it stays in the
+  comps tables with a note): a retailer's value comes from its cash flows, not from the
+  assets on its balance sheet, and share buybacks shrink book equity and inflate P/B.
+- **Reverse DCF box**: the WACC, terminal growth and exit multiple implied by today's price.
+- **Excel export** (`export.py`, also the download button in the app). The **DCF and WACC
+  sheets are live formulas**: inputs are blue on yellow, and changing one updates the value
+  per share. The other sheets (Summary, Sensitivity, Comps, Bridge, Market data, Data quality,
+  History) hold values from the moment of export. A test recalculates the workbook with
+  LibreOffice and checks that Excel and Python agree to 9 significant digits.
 
 ### Data quality checks
 Missing fields, zero or negative EBITDA, losses (P/E excluded), negative equity, price outside
 the 52-week range, price × shares vs market cap, our EV vs Yahoo's EV, reporting currency,
 and stale annual statements.
+
+## Valuation commentary
+*Figures from the data downloaded on 12 October 2026 (price $153.64 at the 9 October close, 10-year
+Treasury 5.24%); they move with the data.*
+
+### One-off items (manual overrides)
+Two one-offs distort the trailing twelve months, and neither is removed by Yahoo's
+"normalized" figures:
+- **Kroger**: a $2,585m impairment and related charges for its automated fulfillment network
+  (Q3 FY2025, quarter ending Nov 2025). It is non-cash and inside operating expenses, so the
+  sum of four quarters gives TTM EBITDA of only $5.8bn and P/E of 34x. Added back: EBITDA
+  $8.4bn (EV/EBITDA 6.0x), net income $3.0bn (P/E 12.0x). This lowers the peer median P/E
+  from 33.8x to 20.9x; the median EV/EBITDA (11.3x) does not change.
+- **Target**: $994m of IEEPA tariff refunds booked as lower cost of sales in Q2 2026. Removed:
+  TTM EBITDA $8.27bn instead of $9.26bn (margin 7.7% instead of 8.6%), net income $3.64bn.
+
+Both are in `data/manual_overrides.csv` with the SEC source and will be flagged as stale when
+the TTM window moves (Kroger's charge drops out once Q3 FY2026 is reported).
+
+### Why the default assumptions changed
+The first version averaged all four years Yahoo provides. The oldest year (fiscal year ending
+January 2023) was Target's inventory glut year: 6.0% EBITDA margin, 5.1% capex and a 2.2%
+working capital build. Averaged in, it produced a model that was internally inconsistent:
+revenue shrinking 1.3% a year forever while capex stayed above D&A and the company kept
+investing in working capital, and then a Gordon terminal value growing that depressed cash
+flow at 2.5% forever. Projected FCFF was about $2.2bn a year, against an actual free cash
+flow (operating cash flow - capex) of $3.7bn a year over the last three years.
+The defaults now use the last three years for D&A, capex (3.6%) and tax, 0% working capital and
+a growth path that starts from the growth already visible in 2026 (+2.8%) and fades to 2.5%.
+
+The EBITDA margin starts from where Target is today and moves to where it has been: Year 1 uses
+the current TTM margin with the tariff refund removed (7.7%), rising in a straight line to the
+last three years' average (8.0%) in Year 5. Starting at 8.0% straight away would assume the
+recovery has already happened; staying at 7.7% would ignore that 2023-2025 margins were
+steadily around 8%. Guidance supports a gradual path: in its Q2 2026 results Target guided its underlying 2026
+operating margin (excluding the refunds) to about 0.5 points above 2025's adjusted 4.6%, not a jump back to earlier levels.
+Effect on the Gordon value per share: $47 -> $101.
+
+### Why the Gordon and exit multiple results differ
+- **Gordon growth: $101 (-34%)**. With WACC 9.2% and g 2.5%, the terminal value equals
+  6.3x final-year EBITDA.
+- **Exit multiple: $167 (+9%)**. The peer median EV/EBITDA of 11.3x implies a perpetual
+  growth rate of 5.4%, which no mature retailer can sustain forever.
+
+**Read the exit multiple result as an optimistic upper bound.** The 11.3x is the peer median,
+and the peer group includes Walmart and Costco, which trade at premium multiples. Target's own
+EV/EBITDA is 8.7x on reported TTM EBITDA (9.7x once the tariff refund is removed), and today's
+price implies an exit multiple of 10.3x. Applying 11.3x assumes Target will be valued more
+richly in five years than it is today, which is why this method lands above the price.
+
+The two methods ask different questions. Gordon asks what the cash flows are worth at
+*our* discount rate; the exit multiple asks what buyers pay *today* for similar companies.
+The peer median is pulled up by Walmart (19.8x) and Costco (28.1x), which trade at premium
+multiples for their growth and membership models; Target itself trades at 9.7x. The truth
+probably sits in between, and the gap is shown rather than hidden.
+
+### What the current price implies (reverse DCF)
+With every other assumption unchanged, today's price of $153.64 implies:
+- a **WACC of 7.2%** (the model uses 9.2%), or
+- a **terminal growth rate of 4.8%** at the model WACC, or
+- an **exit multiple of 10.3x**.
+
+The WACC is high because the risk-free rate is high (5.24%): cost of equity = 5.24% + 0.98 x 5.0%
+= 10.1%. We do not lower it to "fit" the price; the live rate is market data, and the
+sensitivity tables show how the value moves with WACC. The honest reading is that, at
+today's interest rates, the market price needs either a lower required return or more
+growth/margin recovery than Target's recent history shows.
+
+### Why leases are excluded from enterprise value (ASC 842)
+Under US GAAP (ASC 842) operating lease costs (store rent) stay in operating expenses, so
+EBITDA is already *after* rent. Lease liabilities are on the balance sheet and Yahoo includes
+them in total debt. If we put them in EV but use post-rent EBITDA, rent is counted twice:
+once as a cost that lowers EBITDA and once as debt that raises EV. EV/EBITDA would then be
+overstated, and more so for companies that lease more stores (Dollar General's lease
+liabilities are $11.2bn against $4.6bn of financial debt). So EV = market cap + financial debt
+- cash, consistently for the target and every peer. The alternative (EV including leases with
+EBITDAR, i.e. before rent) is also consistent, but Yahoo does not report rent for every company.
 
 ## Assumptions and limitations
 - **Data quality**: Yahoo Finance is free and convenient but not audited. Key numbers should
@@ -96,7 +213,9 @@ and stale annual statements.
   quarters have unequal lengths (12/12/12/16 weeks), but four consecutive quarters still cover a full year.
 - Yahoo usually provides only 4 years of annual statements, so the default DCF assumptions
   rest on 3-4 data points. One unusual year (e.g. a big working capital build) moves the average.
-- The DCF uses the same assumption for all 5 years by default. Per-year inputs are supported.
+- Apart from revenue growth and the EBITDA margin (which move in a straight line), the DCF uses the same assumption
+  for all 5 years by default. Per-year inputs are supported.
+- Manual overrides are fixed numbers. They are checked for staleness but must be updated by hand.
 - The equity risk premium, credit spread and terminal growth are judgement calls, not data.
 
 ## Project structure
@@ -105,25 +224,49 @@ config.py              tickers, settings and thresholds
 data_loader.py         download, cache, overrides, data quality report
 comps.py               trading multiples, peer statistics, implied value bridge
 dcf.py                 projection, FCFF, WACC, terminal value, sensitivity tables
-charts.py              Plotly charts (sensitivity heatmap)
+summary.py             football field data, reverse DCF, app inputs -> model
+charts.py              Plotly charts (football field, sensitivity heatmap)
+export.py              Excel export (DCF and WACC as live formulas)
+app.py                 Streamlit app
 data/manual_overrides.csv
 data/cache/            downloaded data (not in git)
-tests/                 pytest unit tests (offline, small hand-checkable numbers)
+data/snapshot/         saved copy of the data, used only if the live download fails
+.streamlit/config.toml app theme and settings (also used by Streamlit Community Cloud)
+requirements.txt       runtime dependencies (pinned); requirements-dev.txt adds pytest
+tests/                 pytest tests (offline: small hand-checkable numbers and a made-up data set)
+docs/screenshot.png    app screenshot
 ```
 
 ## How to run
+Needs **Python 3.11 to 3.14**. (Python 3.15 does not work yet: Streamlit needs `pyarrow`,
+which has no ready-made package for 3.15, so the installation fails.)
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
-pip install -r requirements.txt
+pip install -r requirements-dev.txt   # or requirements.txt if you don't need the tests
 
 python data_loader.py            # snapshot, annual history and data quality report
 python data_loader.py --refresh  # ignore the 24h cache and download again
+python data_loader.py --refresh --save-snapshot   # also update the committed fallback data
 python comps.py                  # comparable companies analysis
 python dcf.py                    # DCF valuation in the terminal
 python dcf.py --html             # also save sensitivity heatmaps to output/
-pytest                           # run the unit tests
+python export.py                 # Excel model with default assumptions -> output/TGT_valuation.xlsx
+streamlit run app.py             # the app (http://localhost:8501)
+pytest                           # run the tests (the Excel formula test needs LibreOffice)
 ```
+
+If you download SEC filings with your own scripts, set your contact in an environment
+variable rather than in the code (the SEC rejects requests without one):
+`export SEC_USER_AGENT="Your Name you@example.com"` (read as `config.SEC_USER_AGENT`).
+
+## Deploying on Streamlit Community Cloud
+- Main file: `app.py`. In **Advanced settings** choose **Python 3.12** (Community Cloud ignores
+  `runtime.txt`; the version can only be changed by deleting and redeploying the app).
+- No secrets or API keys are needed.
+- Yahoo Finance often rate-limits shared cloud servers. If the live download fails, the app
+  opens with the saved data in `data/snapshot/` and shows a warning saying so. Refresh the
+  snapshot from time to time with `python data_loader.py --refresh --save-snapshot` and push it.
 
 ## Changing the companies
 Edit `TARGET`, `PEERS` and `COMPANY_NAMES` in `config.py`.

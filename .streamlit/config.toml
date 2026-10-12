@@ -1,0 +1,9 @@
+# Streamlit settings, used locally and on Streamlit Community Cloud
+[theme]
+base = "light"                # the charts are designed on a light surface
+
+[client]
+toolbarMode = "viewer"        # hide developer options (e.g. "Deploy") from visitors
+
+[browser]
+gatherUsageStats = false
