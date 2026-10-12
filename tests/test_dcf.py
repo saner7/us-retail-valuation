@@ -109,16 +109,47 @@ def test_sensitivity_grid_shape_and_center():
     assert dcf._grid(0.10, 0.02, 0.005)[0] == 0.08 and len(dcf._grid(0.10, 0.02, 0.005)) == 9
 
 
-def test_default_assumptions_from_history():
-    h = pd.DataFrame({
-        "revenue": [100.0, 110.0, 121.0], "ebitda": [10.0, 11.0, 12.1],
-        "d_and_a": [2.0, 2.2, 2.42], "capex": [-3.0, -3.3, -3.63],
-        "change_in_wc": [-1.0, -1.1, -1.21], "tax_provision": [2.0, 2.5, 3.0],
-        "pretax_income": [10.0, 10.0, 10.0],
-    }, index=pd.to_datetime(["2024-01-31", "2025-01-31", "2026-01-31"]))
-    d = dcf.default_assumptions(h)
-    assert d["revenue_growth"] == pytest.approx(0.10)     # CAGR 100 -> 121 over 2 years
-    assert d["ebitda_margin"] == pytest.approx(0.10)
-    assert d["capex_pct"] == pytest.approx(0.03)          # capex sign flipped to a cost
-    assert d["nwc_pct"] == pytest.approx(0.01)            # negative cash flow = NWC investment
+def sample_history():
+    # 4 fiscal years; the oldest one is an outlier (margin 5%, capex 10%)
+    return pd.DataFrame({
+        "revenue": [100.0, 100.0, 110.0, 121.0], "ebitda": [5.0, 10.0, 11.0, 12.1],
+        "d_and_a": [2.0, 2.0, 2.2, 2.42], "capex": [-10.0, -3.0, -3.3, -3.63],
+        "change_in_wc": [-5.0, -1.0, -1.1, -1.21], "tax_provision": [1.0, 2.0, 2.5, 3.0],
+        "pretax_income": [10.0, 10.0, 10.0, 10.0],
+    }, index=pd.to_datetime(["2023-01-31", "2024-01-31", "2025-01-31", "2026-01-31"]))
+
+
+def test_default_assumptions_use_last_three_years():
+    d = dcf.default_assumptions(sample_history(), revenue_ttm=127.05, terminal_growth=0.02, n_years=3)
+    assert d["ebitda_margin"] == pytest.approx(0.10)      # outlier year (5%) is left out
+    assert d["capex_pct"] == pytest.approx(0.03)          # capex sign flipped to a cost; 10% year left out
     assert d["tax_rate"] == pytest.approx(0.25)           # (20% + 25% + 30%) / 3
+    assert d["nwc_pct"] == 0.0                            # config default, not the volatile history
+
+
+def test_revenue_growth_fades_from_ttm_growth_to_terminal_growth():
+    # TTM 127.05 vs last fiscal year 121 = +5%; straight line to 2% over 5 years
+    d = dcf.default_assumptions(sample_history(), revenue_ttm=127.05, terminal_growth=0.02, n_years=3)
+    assert d["revenue_growth"] == pytest.approx([0.05, 0.0425, 0.035, 0.0275, 0.02])
+    # Without TTM revenue, Year 1 falls back to the CAGR (100 -> 121 over 3 years)
+    d = dcf.default_assumptions(sample_history(), terminal_growth=0.02)
+    assert d["revenue_growth"][0] == pytest.approx(1.21 ** (1 / 3) - 1)
+    assert d["revenue_growth"][-1] == pytest.approx(0.02)
+
+
+def test_assumption_reference_shows_all_bases():
+    ref = dcf.assumption_reference(sample_history(), {"ebitda_ttm": 9.0, "revenue_ttm": 120.0}, n_years=3)
+    assert ref.loc["ebitda_margin", "all_years_avg"] == pytest.approx(0.0875)   # (5+10+10+10)/4 %
+    assert ref.loc["ebitda_margin", "last_3y_avg"] == pytest.approx(0.10)
+    assert ref.loc["ebitda_margin", "ttm"] == pytest.approx(0.075)              # 9 / 120
+    assert ref.loc["revenue_growth", "all_years_avg"] == pytest.approx(1.21 ** (1 / 3) - 1)  # CAGR
+
+
+def test_implied_by_price_reverses_the_dcf():
+    # The by-hand case above is worth 90 per share at WACC 10%; ask which WACC gives 90
+    a = flat_assumptions(tax_rate=1 / 3)
+    kw = dict(base_revenue=1000.0, assumptions=a, wacc_rate=0.12, terminal_growth=0.0,
+              exit_multiple=5.0, net_debt=100.0, shares=10.0, price=90.0, mid_year=False)
+    assert dcf.implied_by_price(kw, "wacc_rate", "gordon", 0.05, 0.20) == pytest.approx(0.10, abs=1e-6)
+    # A price the model cannot reach in the range -> NaN
+    assert math.isnan(dcf.implied_by_price(kw, "wacc_rate", "gordon", 0.05, 0.20, target_price=1e6))

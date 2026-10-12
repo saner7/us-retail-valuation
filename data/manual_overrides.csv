@@ -1,6 +1,17 @@
 # Manual overrides: one value per line. These replace Yahoo Finance data.
 # field must be one of the names in data_loader.py (SNAPSHOT_FIELDS or DERIVED_FIELDS).
 # Values are in USD (full units, not millions). Always write the source in "note".
+# Do not use the hash character inside a note: everything after it is ignored.
+#
+# For TTM values adjusted for a one-off item also fill in:
+#   adjusted_quarter = quarter that contains the one-off (quarter end as Yahoo labels it)
+#   ttm_end          = last quarter of the TTM window the value was calculated for
+# The data quality report then warns when the override has gone stale.
+#
 # Example (remove the leading # to activate):
-# TGT,ebitda_ttm,8900000000,"10-Q Q2 FY2026, p.5"
-ticker,field,value,note
+# TGT,ebitda_ttm,8900000000,,,"10-Q Q2 FY2026, p.5"
+ticker,field,value,adjusted_quarter,ttm_end,note
+KR,ebitda_ttm,8401000000,2025-10-31,2026-07-31,"Sum of 4 quarters (5,816m) + 2,585m fulfillment network impairment and related charges in Q3 FY2025 (non-cash, one-off). Source: Kroger Q3 2025 results, 8-K Ex.99.1 of 2025-12-04 (cash flow statement), https://www.sec.gov/Archives/edgar/data/56873/000110465925118315/tm2532524d1_ex99-1.htm"
+KR,net_income_ttm,3043000000,2025-10-31,2026-07-31,"Sum of 4 quarters (1,078m) + after-tax impact of the same charge: 3.00 per share x 655m diluted shares = 1,965m (company: 2.0bn net of tax). Source: Kroger Q3 2025 results, 8-K Ex.99.1 of 2025-12-04"
+TGT,ebitda_ttm,8267000000,2026-07-31,2026-07-31,"Sum of 4 quarters (9,261m) - 994m IEEPA tariff refunds booked as a reduction of cost of sales in Q2 2026 (one-off). Source: Target Q2 2026 results, 8-K Ex.99 of 2026-08-19, https://www.sec.gov/Archives/edgar/data/27419/000002741926000034/a2026q2ex-99.htm"
+TGT,net_income_ttm,3638610000,2026-07-31,2026-07-31,"Sum of 4 quarters (4,392m) - after-tax tariff refund benefit: 1.65 per share x 456.6m diluted shares = 753.4m. Source: Target Q2 2026 results, 8-K Ex.99 of 2026-08-19"

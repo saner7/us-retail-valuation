@@ -37,6 +37,9 @@ summarises both in a "football field" chart, the way an investment banking pitch
   risk premium defaults to 0 for the US.
 - **Manual overrides**: any value can be replaced in `data/manual_overrides.csv`
   (with a source note). Every value is tagged as `auto`, `manual`, `derived` or `missing`.
+  TTM values adjusted for a one-off record the quarter that contains the one-off and the
+  TTM window they were calculated for; the data quality report flags the override as stale
+  once that quarter leaves the window or a newer quarter is reported.
 - **No invented data**: if a value cannot be found it stays `N/A` and is flagged. It is never estimated.
 
 ### Comparable companies (Stage 2)
@@ -56,9 +59,15 @@ summarises both in a "football field" chart, the way an investment banking pitch
 
 ### DCF (Stage 3)
 - **5-year projection** starting from TTM revenue (Year 1 = the next twelve months).
-  Default assumptions are historical averages (revenue growth: CAGR) and are shown next to the
-  history they come from: revenue growth, EBITDA margin, D&A, capex and NWC investment as % of
-  revenue, effective tax rate.
+  Default assumptions (all editable, each shown next to the history it comes from):
+  - EBITDA margin, D&A, capex (% of revenue) and tax rate: **average of the last 3 fiscal years**
+    (`DEFAULT_HISTORY_YEARS`). The all-years average, the latest year and, for the EBITDA
+    margin, the current TTM margin are shown for comparison.
+  - Increase in net working capital: **0% of revenue** (`DEFAULT_NWC_PCT`), because the history
+    swings by 2-3% of revenue with a single inventory build.
+  - Revenue growth: Year 1 = TTM revenue vs the last full fiscal year (growth already visible
+    in the reported quarters), then a **straight line to the terminal growth rate** in Year 5.
+    Falls back to the historical CAGR if TTM revenue is missing.
 - **FCFF** = EBIT × (1 − tax) + D&A − capex − increase in net working capital.
 - **WACC** = E/(D+E) × cost of equity + D/(D+E) × after-tax cost of debt, with market-value weights.
   - Cost of equity (CAPM) = risk-free rate (10y Treasury, live) + beta (Yahoo) × equity risk
@@ -74,6 +83,8 @@ summarises both in a "football field" chart, the way an investment banking pitch
   Rosenbaum & Pearl, the Gordon terminal value is discounted at N − 0.5, the exit multiple
   terminal value at N (it is a sale price at the end of year N).
 - **Bridge**: EV − net debt = equity value ÷ shares = value per share, vs current price.
+- **Reverse DCF**: the WACC, terminal growth and exit multiple at which the model value equals
+  today's share price.
 - **Sensitivity tables**: WACC ±2% (0.5% steps) × terminal growth ±1% (0.5% steps), and
   WACC × exit multiple ±2x (1x steps), shown as heatmaps colored around the current price.
 - A warning is shown when the terminal value is more than 75% of enterprise value.
@@ -82,6 +93,69 @@ summarises both in a "football field" chart, the way an investment banking pitch
 Missing fields, zero or negative EBITDA, losses (P/E excluded), negative equity, price outside
 the 52-week range, price × shares vs market cap, our EV vs Yahoo's EV, reporting currency,
 and stale annual statements.
+
+## Valuation commentary
+*Figures as of 9 October 2026 (price $153.64, 10-year Treasury 5.24%); they move with the data.*
+
+### One-off items (manual overrides)
+Two one-offs distort the trailing twelve months, and neither is removed by Yahoo's
+"normalized" figures:
+- **Kroger**: a $2,585m impairment and related charges for its automated fulfillment network
+  (Q3 FY2025, quarter ending Nov 2025). It is non-cash and inside operating expenses, so the
+  sum of four quarters gives TTM EBITDA of only $5.8bn and P/E of 34x. Added back: EBITDA
+  $8.4bn (EV/EBITDA 6.0x), net income $3.0bn (P/E 12.0x). This lowers the peer median P/E
+  from 33.8x to 20.9x; the median EV/EBITDA (11.3x) does not change.
+- **Target**: $994m of IEEPA tariff refunds booked as lower cost of sales in Q2 2026. Removed:
+  TTM EBITDA $8.27bn instead of $9.26bn (margin 7.7% instead of 8.6%), net income $3.64bn.
+
+Both are in `data/manual_overrides.csv` with the SEC source and will be flagged as stale when
+the TTM window moves (Kroger's charge drops out once Q3 FY2026 is reported).
+
+### Why the default assumptions changed
+The first version averaged all four years Yahoo provides. The oldest year (fiscal year ending
+January 2023) was Target's inventory glut year: 6.0% EBITDA margin, 5.1% capex and a 2.2%
+working capital build. Averaged in, it produced a model that was internally inconsistent:
+revenue shrinking 1.3% a year forever while capex stayed above D&A and the company kept
+investing in working capital, and then a Gordon terminal value growing that depressed cash
+flow at 2.5% forever. Projected FCFF was about $2.2bn a year, against an actual free cash
+flow (operating cash flow - capex) of $3.7bn a year over the last three years.
+The defaults now use the last three years (8.0% margin, 3.6% capex), 0% working capital and
+a growth path that starts from the growth already visible in 2026 (+2.8%) and fades to 2.5%.
+Effect on the Gordon value per share: $47 -> $102.
+
+### Why the Gordon and exit multiple results differ
+- **Gordon growth: $102 (-33%)**. With WACC 9.2% and g 2.5%, the terminal value equals
+  6.3x final-year EBITDA.
+- **Exit multiple: $168 (+10%)**. The peer median EV/EBITDA of 11.3x implies a perpetual
+  growth rate of 5.4%, which no mature retailer can sustain forever.
+
+The two methods ask different questions. Gordon asks what the cash flows are worth at
+*our* discount rate; the exit multiple asks what buyers pay *today* for similar companies.
+The peer median is pulled up by Walmart (19.8x) and Costco (28.1x), which trade at premium
+multiples for their growth and membership models; Target itself trades at 9.7x. The truth
+probably sits in between, and the gap is shown rather than hidden.
+
+### What the current price implies (reverse DCF)
+With every other assumption unchanged, today's price of $153.64 implies:
+- a **WACC of 7.2%** (the model uses 9.2%), or
+- a **terminal growth rate of 4.8%** at the model WACC, or
+- an **exit multiple of 10.2x**.
+
+The WACC is high because the risk-free rate is high (5.24%): cost of equity = 5.24% + 0.98 x 5.0%
+= 10.1%. We do not lower it to "fit" the price; the live rate is market data, and the
+sensitivity tables show how the value moves with WACC. The honest reading is that, at
+today's interest rates, the market price needs either a lower required return or more
+growth/margin recovery than Target's recent history shows.
+
+### Why leases are excluded from enterprise value (ASC 842)
+Under US GAAP (ASC 842) operating lease costs (store rent) stay in operating expenses, so
+EBITDA is already *after* rent. Lease liabilities are on the balance sheet and Yahoo includes
+them in total debt. If we put them in EV but use post-rent EBITDA, rent is counted twice:
+once as a cost that lowers EBITDA and once as debt that raises EV. EV/EBITDA would then be
+overstated, and more so for companies that lease more stores (Dollar General's lease
+liabilities are $11.2bn against $4.6bn of financial debt). So EV = market cap + financial debt
+- cash, consistently for the target and every peer. The alternative (EV including leases with
+EBITDAR, i.e. before rent) is also consistent, but Yahoo does not report rent for every company.
 
 ## Assumptions and limitations
 - **Data quality**: Yahoo Finance is free and convenient but not audited. Key numbers should
@@ -96,7 +170,9 @@ and stale annual statements.
   quarters have unequal lengths (12/12/12/16 weeks), but four consecutive quarters still cover a full year.
 - Yahoo usually provides only 4 years of annual statements, so the default DCF assumptions
   rest on 3-4 data points. One unusual year (e.g. a big working capital build) moves the average.
-- The DCF uses the same assumption for all 5 years by default. Per-year inputs are supported.
+- Apart from revenue growth (which fades to the terminal rate), the DCF uses the same assumption
+  for all 5 years by default. Per-year inputs are supported.
+- Manual overrides are fixed numbers. They are checked for staleness but must be updated by hand.
 - The equity risk premium, credit spread and terminal growth are judgement calls, not data.
 
 ## Project structure
@@ -124,6 +200,10 @@ python dcf.py                    # DCF valuation in the terminal
 python dcf.py --html             # also save sensitivity heatmaps to output/
 pytest                           # run the unit tests
 ```
+
+If you download SEC filings with your own scripts, set your contact in an environment
+variable rather than in the code (the SEC rejects requests without one):
+`export SEC_USER_AGENT="Your Name you@example.com"` (read as `config.SEC_USER_AGENT`).
 
 ## Changing the companies
 Edit `TARGET`, `PEERS` and `COMPANY_NAMES` in `config.py`.

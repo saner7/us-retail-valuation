@@ -269,18 +269,62 @@ def lease_liabilities(balance_q: pd.DataFrame):
 # 4) Manual overrides
 # ---------------------------------------------------------------------------
 
+OVERRIDE_COLUMNS = ["ticker", "field", "value", "adjusted_quarter", "ttm_end", "note"]
+
+
 def load_overrides(path=config.OVERRIDES_PATH) -> pd.DataFrame:
-    """Read data/manual_overrides.csv. Lines starting with '#' are comments."""
-    columns = ["ticker", "field", "value", "note"]
+    """Read data/manual_overrides.csv. Lines starting with '#' are comments.
+
+    `adjusted_quarter` and `ttm_end` are optional. Fill them in when a TTM value
+    is adjusted for a one-off item: `adjusted_quarter` is the quarter that
+    contains the one-off, `ttm_end` the last quarter of the TTM window the value
+    was calculated for (both as Yahoo labels the quarter end, YYYY-MM-DD).
+    They let the data quality report warn when the override has gone stale."""
     if not path.exists():
-        return pd.DataFrame(columns=columns)
+        return pd.DataFrame(columns=OVERRIDE_COLUMNS)
     df = pd.read_csv(path, comment="#", skipinitialspace=True)
     df = df.dropna(subset=["ticker", "field", "value"])
+    for col in OVERRIDE_COLUMNS:
+        if col not in df.columns:
+            df[col] = np.nan
     unknown = set(df["field"]) - set(ALL_FIELDS)
     if unknown:
         warnings.warn(f"Unknown field(s) in overrides file, ignored: {sorted(unknown)}")
         df = df[df["field"].isin(ALL_FIELDS)]
     return df
+
+
+def override_checks(ticker: str, overrides: pd.DataFrame, quarterly: pd.DataFrame) -> list:
+    """Warnings for overrides of TTM values that no longer match the data.
+
+    A TTM override adjusted for a one-off is a fixed number, but the TTM window
+    moves every quarter:
+      - once the adjusted quarter has left the 4-quarter window, the one-off is
+        no longer in Yahoo's numbers either, so the override must be removed;
+      - once a newer quarter is reported, the override was calculated for an
+        old window and must be recalculated.
+    Returns a list of (field, status, comment)."""
+    flags = []
+    rows = overrides[overrides["ticker"] == ticker]
+    if rows.empty or quarterly.empty:
+        return flags
+    window = sorted(quarterly.columns, reverse=True)[:4]
+    latest = window[0]
+    for _, row in rows.iterrows():
+        field = row["field"]
+        if not is_missing(row.get("adjusted_quarter")):
+            adjusted = pd.Timestamp(row["adjusted_quarter"])
+            if adjusted not in window:
+                flags.append((field, "Suspicious",
+                              f"Stale override: it adjusts the quarter ending {adjusted:%Y-%m-%d}, which is no "
+                              f"longer in the TTM window ({window[-1]:%Y-%m-%d} to {latest:%Y-%m-%d}). "
+                              f"Remove it from data/manual_overrides.csv"))
+                continue
+        if not is_missing(row.get("ttm_end")) and latest > pd.Timestamp(row["ttm_end"]):
+            flags.append((field, "Suspicious",
+                          f"Stale override: calculated for the TTM window ending {row['ttm_end']}, but the "
+                          f"quarter ending {latest:%Y-%m-%d} is now available. Recalculate it"))
+    return flags
 
 
 def apply_overrides(snapshot: dict, ticker: str, overrides: pd.DataFrame):
@@ -365,14 +409,17 @@ def annual_history(statements: dict) -> pd.DataFrame:
 
 def quality_checks(ticker: str, values: dict, sources: dict, meta: dict,
                    history: pd.DataFrame, today: datetime = None,
-                   notes: dict = None) -> pd.DataFrame:
+                   notes: dict = None, flags: list = None) -> pd.DataFrame:
     """One row per field (plus a few company-level checks).
     status: OK / Missing / Suspicious / Note.
-    `notes` are extra explanations (e.g. from replace_ttm), shown as 'Note'."""
+    `notes` are extra explanations (e.g. from replace_ttm), shown as 'Note'.
+    `flags` are extra (field, status, comment) issues (e.g. from override_checks)."""
     today = today or datetime.now()
     issues = {f: [] for f in ALL_FIELDS}   # field -> list of (status, comment)
     for field, comment in (notes or {}).items():
         issues[field].append(("Note", comment))
+    for field, status, comment in (flags or []):
+        issues[field].append((status, comment))
 
     def flag(field, status, comment):
         issues[field].append((status, comment))
@@ -462,7 +509,12 @@ def load_company(ticker: str, overrides: pd.DataFrame, refresh: bool = False) ->
     history = annual_history(raw["statements"])
     # A manual value replaces the TTM calculation, so its note no longer applies
     ttm_notes = {f: n for f, n in ttm_notes.items() if sources[f] != "manual"}
-    quality = quality_checks(ticker, values, sources, raw["meta"], history, notes=ttm_notes)
+    mine = overrides[overrides["ticker"] == ticker]
+    for _, row in mine.iterrows():
+        note = "" if is_missing(row["note"]) else f": {row['note']}"
+        ttm_notes[row["field"]] = f"Manual value{note}"
+    flags = override_checks(ticker, overrides, raw["statements"]["income_q"])
+    quality = quality_checks(ticker, values, sources, raw["meta"], history, notes=ttm_notes, flags=flags)
     return {"ticker": ticker, "values": values, "sources": sources, "meta": raw["meta"],
             "statements": raw["statements"], "history": history, "quality": quality}
 

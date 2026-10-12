@@ -174,3 +174,52 @@ def test_replace_ttm_overrides_yahoo_and_explains_why():
     kept, notes = dl.replace_ttm(snap, pd.DataFrame())
     assert kept["ebitda_ttm"] == -50.0
     assert "Yahoo's summary" in notes["ebitda_ttm"]
+
+
+def override_rows(**cols):
+    row = {"ticker": "TEST.IS", "field": "ebitda_ttm", "value": 90.0, "adjusted_quarter": np.nan,
+           "ttm_end": np.nan, "note": "one-off removed"}
+    row.update(cols)
+    return pd.DataFrame([row])
+
+
+def test_override_check_ok_while_adjusted_quarter_in_window():
+    q = quarterly(FOUR_QUARTERS, [10.0, 20.0, 30.0, 40.0])
+    ov = override_rows(adjusted_quarter="2025-12-31", ttm_end="2026-06-30")
+    assert dl.override_checks("TEST.IS", ov, q) == []
+    assert dl.override_checks("OTHER.IS", ov, q) == []       # other companies' overrides are ignored
+
+
+def test_override_check_flags_one_off_that_left_the_window():
+    # A new quarter (2026-09-30) pushed 2025-09-30 out of the 4-quarter window
+    q = quarterly(["2026-09-30"] + FOUR_QUARTERS, [1.0] * 5)
+    flags = dl.override_checks("TEST.IS", override_rows(adjusted_quarter="2025-09-30", ttm_end="2026-06-30"), q)
+    assert len(flags) == 1
+    field, status, comment = flags[0]
+    assert (field, status) == ("ebitda_ttm", "Suspicious")
+    assert "no longer in the TTM window" in comment
+
+
+def test_override_check_flags_newer_quarter():
+    # The one-off is still in the window, but the value was calculated for an older window
+    q = quarterly(["2026-09-30"] + FOUR_QUARTERS, [1.0] * 5)
+    flags = dl.override_checks("TEST.IS", override_rows(adjusted_quarter="2026-03-31", ttm_end="2026-06-30"), q)
+    assert len(flags) == 1 and "Recalculate" in flags[0][2]
+
+
+def test_override_flags_show_in_quality_report():
+    values, sources = build(sample_snapshot())
+    meta = {"financial_currency": "USD", "yahoo_enterprise_value": 1200.0}
+    q = dl.quality_checks("TEST.IS", values, sources, meta, sample_history(), today=datetime(2026, 6, 30),
+                          flags=[("ebitda_ttm", "Suspicious", "Stale override")])
+    row = q.set_index("field").loc["ebitda_ttm"]
+    assert row["status"] == "Suspicious" and "Stale override" in row["comment"]
+
+
+def test_overrides_file_without_optional_columns(tmp_path):
+    path = tmp_path / "overrides.csv"
+    path.write_text("ticker,field,value,note\nTEST.IS,cash,5,annual report\n")
+    ov = dl.load_overrides(path)
+    assert set(dl.OVERRIDE_COLUMNS) <= set(ov.columns)
+    assert ov.loc[0, "value"] == 5
+    assert ov["adjusted_quarter"].isna().all()
