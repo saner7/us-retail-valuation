@@ -128,6 +128,7 @@ def fetch_from_yahoo(ticker: str) -> dict:
         "name": info.get("longName") or info.get("shortName"),
         "sector": info.get("sector"),
         "industry": info.get("industry"),
+        "country": info.get("country"),
     }
 
     statements = {}

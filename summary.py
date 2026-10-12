@@ -19,7 +19,7 @@ import comps
 import config
 import dcf
 
-GROUPS = {"market": "Market", "comps": "Trading comps", "dcf": "DCF"}
+GROUPS = {"market": "Market", "comps": "Trading comps", "precedents": "Precedent transactions", "dcf": "DCF"}
 
 
 def dcf_range(run_kwargs: dict, method: str) -> dict:
@@ -43,11 +43,14 @@ def dcf_range(run_kwargs: dict, method: str) -> dict:
 
 
 def football_field_data(companies: dict, run_kwargs: dict, target: str = None,
-                        peers: list = None, row_order: list = None, scenario_runs: dict = None) -> pd.DataFrame:
+                        peers: list = None, row_order: list = None, scenario_runs: dict = None,
+                        precedent_row: dict = None) -> pd.DataFrame:
     """Rows in display order (top to bottom), as set in config.FOOTBALL_FIELD_ROWS.
     Columns: key, label, group, low, mid, high, basis (how the range was built,
     for tooltips and the Excel export), bear, bull (scenario values, DCF rows only,
-    from scenarios.run_scenarios(); the bar range itself is unchanged)."""
+    from scenarios.run_scenarios(); the bar range itself is unchanged).
+    `precedent_row` (precedents.football_field_row) adds "Precedents: EV / EBITDA";
+    without it that row is left out."""
     target = target or config.TARGET
     peers = peers or config.PEERS
     row_order = list(row_order or config.FOOTBALL_FIELD_ROWS)
@@ -66,6 +69,8 @@ def football_field_data(companies: dict, run_kwargs: dict, target: str = None,
                                    f"{r['multiple_median']:.1f}x / {r['multiple_high']:.1f}x"
                                    + (f" ({r['note']})" if r["note"] else "")}
 
+    if precedent_row:
+        rows["prec_ev_ebitda"] = dict(precedent_row)
     w = run_kwargs["wacc_rate"]
     dw = config.FF_WACC_DELTA
     g, m = run_kwargs["terminal_growth"], run_kwargs["exit_multiple"]

@@ -18,8 +18,13 @@ GRID = "#e6e5e0"
 SURFACE = "#fcfcfb"
 
 # Football field: one categorical hue per group, in the palette's fixed order
-# (slots 1-3 of the palette; dict order = legend order, same as the rows top-down)
-GROUP_COLORS = {"Market": "#1baf7a", "Trading comps": "#2a78d6", "DCF": "#eb6834"}
+# (palette slots; dict order = legend order, same as the rows top-down)
+# Neighbouring rows must stay distinguishable: in row order Market, Comps,
+# Precedents, DCF this assignment passes the palette validator (CVD and normal
+# vision); yellow next to orange did not. Every bar carries direct value labels
+# because yellow and aqua are below 3:1 contrast on the surface.
+GROUP_COLORS = {"Market": "#eda100", "Trading comps": "#2a78d6", "Precedent transactions": "#1baf7a",
+                "DCF": "#eb6834"}
 FONT = {"family": "Inter, Helvetica, Arial, sans-serif", "color": INK}
 
 

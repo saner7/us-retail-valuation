@@ -26,6 +26,7 @@ import comps
 import config
 import data_loader as dl
 import dcf
+import precedents
 import scenarios
 import summary
 
@@ -608,6 +609,59 @@ def _bridge_sheet(wb, data, target, peers, ccy):
     _widths(ws, {"A": 30, **{get_column_letter(i): 15 for i in range(2, 2 + len(b.columns))}})
 
 
+def _precedents_sheet(wb, deals: pd.DataFrame, mask: pd.Series, applies: bool, target_values: dict,
+                      target: str, ccy: str):
+    ws = wb.create_sheet("Precedents")
+    _title(ws, "Precedent transactions: EV / LTM EBITDA (values at export)",
+           "Amounts in millions of the deal currency. Only EV/EBITDA is used: it is the standard yardstick in "
+           "acquisitions, and EV/Sales would compare businesses with very different margins.")
+    _header(ws, 4, ["In calculation", "Announced", "Target", "Acquirer", "Status", "Tier", "Type", "EV (m)", "Currency",
+                    "EV / LTM EBITDA", "LTM EBITDA (m)", "Premium (info only)", "Source", "Notes"])
+    for i, (idx, d) in enumerate(deals.iterrows(), start=5):
+        values = ["Yes" if mask[idx] else "No", d["announcement_date"].strftime("%Y-%m-%d"), d["target"], d["acquirer"],
+                  d["status"], d["tier"], d["deal_type"], d["enterprise_value"], d["currency"], d["ev_ebitda"],
+                  d["ltm_ebitda"], None if pd.isna(d["premium_pct"]) else d["premium_pct"] / 100, d["source_url"],
+                  d["notes"]]
+        fmts = [None, None, None, None, None, None, None, FMT_MONEY, None, FMT_MULT, FMT_MONEY, FMT_PCT, None, None]
+        for j, (v, f) in enumerate(zip(values, fmts), start=1):
+            _put(ws, i, j, v, f, font=NOTE if j == 14 else FONT)
+    row = 5 + len(deals) + 1
+    _put(ws, row, 1, "Premiums are for information only: they are measured against different reference prices "
+                     "(a single close, 10- to 30-day averages, or a price months before the announcement).", font=NOTE)
+    row += 2
+    included = deals[mask]
+    if not applies:
+        _put(ws, row, 1, f"Not used for {target}: the deals in the calculation are from other sub-sectors.", bold=True)
+    elif included.empty:
+        _put(ws, row, 1, "No deal in the calculation.", bold=True)
+    else:
+        v = precedents.valuation(target_values, included)
+        if v["small_sample"]:
+            _put(ws, row, 1, f"Small sample: only {int(v['stats']['count'])} deals in the calculation.", bold=True)
+            row += 1
+        _header(ws, row, ["EV / LTM EBITDA of the deals in the calculation", "Value"])
+        for i, k in enumerate(["count", "min", "p25", "median", "mean", "p75", "max"], start=row + 1):
+            _put(ws, i, 1, k)
+            _put(ws, i, 2, v["stats"][k], "0" if k == "count" else FMT_MULT)
+        row += 10
+        b = v["bridge"]
+        _header(ws, row, [f"Implied value for {target} ({ccy}m unless stated)", "Low", "Median", "High"])
+        lines = [("Target metric (TTM EBITDA)", [b["metric"] / M] * 3, FMT_MONEY),
+                 ("x Precedent multiple", b["multiples"], FMT_MULT),
+                 ("= Implied enterprise value", [x / M for x in b["implied_ev"]], FMT_MONEY),
+                 ("- Net debt", [b["net_debt"] / M] * 3, FMT_MONEY),
+                 ("= Implied equity value", [x / M for x in b["equity_value"]], FMT_MONEY),
+                 ("/ Shares outstanding (m)", [b["shares"] / M] * 3, FMT_MONEY),
+                 (f"= Implied value per share ({ccy})", b["per_share"], price_format(ccy))]
+        for i, (label, vals, f) in enumerate(lines, start=row + 1):
+            _put(ws, i, 1, label, bold=label.startswith("= Implied value"))
+            for j, x in enumerate(vals, start=2):
+                _put(ws, i, j, x, f)
+        _put(ws, row + len(lines) + 1, 1, f"Range: {v['method'].replace('peers', 'deals')}.", font=NOTE)
+    _widths(ws, {"A": 34, "B": 12, "C": 22, "D": 30, "E": 11, "F": 10, "G": 16, "H": 10, "I": 9, "J": 10,
+                 "K": 12, "L": 12, "M": 40, "N": 120})
+
+
 def _market_data_sheet(wb, data):
     ws = wb.create_sheet("Market data")
     companies = data["companies"]
@@ -669,7 +723,8 @@ def _history_sheet(wb, data, target, reference):
 # ---------------------------------------------------------------------------
 
 def build_workbook(data: dict, choices: dict, target: str = None, peers: list = None,
-                   scenario_values: dict = None, weights: dict = None, scenario_switch: int = 2) -> bytes:
+                   scenario_values: dict = None, weights: dict = None, scenario_switch: int = 2,
+                   precedent_deals: pd.DataFrame = None, precedent_settings: dict = None) -> bytes:
     """The full model as an .xlsx file (bytes), for st.download_button or a file.
     `choices` are the app's (Base) inputs (summary.default_choices() for the defaults);
     `scenario_values` the Bear/Base/Bull values (scenarios.default_scenarios() if omitted);
@@ -688,7 +743,14 @@ def build_workbook(data: dict, choices: dict, target: str = None, peers: list = 
     scenario_values = scenario_values or {sc: sc_defaults[sc] for sc in config.SCENARIOS}
     weights = weights or dict(config.SCENARIO_WEIGHTS)
     runs = scenarios.run_scenarios(data, choices, scenario_values, target)
-    ff = summary.football_field_data(data["companies"], kw, target, peers, scenario_runs=runs if has_wacc else None)
+    prec_all = precedent_deals if precedent_deals is not None else precedents.load_precedents()
+    prec_settings = precedent_settings or {}
+    prec_mask = precedents.included_mask(prec_all, **prec_settings)
+    target_values = data["companies"][target]["values"]
+    prec_applies = precedents.applicable(data["companies"][target]["meta"], target, prec_all[prec_mask])
+    prec_row = precedents.football_field_row(target_values, prec_all[prec_mask]) if prec_applies else None
+    ff = summary.football_field_data(data["companies"], kw, target, peers, scenario_runs=runs if has_wacc else None,
+                                     precedent_row=prec_row)
     sc_table = scenarios.results_table(runs, weights)
 
     rf = data["risk_free"]
@@ -711,6 +773,7 @@ def build_workbook(data: dict, choices: dict, target: str = None, peers: list = 
         _title(ws, "DCF sensitivity: N/A", "Enter a risk-free rate in the app to calculate the WACC and the DCF.")
     _comps_sheet(wb, data, target, peers)
     _bridge_sheet(wb, data, target, peers, ccy)
+    _precedents_sheet(wb, prec_all, prec_mask, prec_applies, target_values, target, ccy)
     _market_data_sheet(wb, data)
     _quality_sheet(wb, data)
     _history_sheet(wb, data, target, defaults["assumption_reference"])

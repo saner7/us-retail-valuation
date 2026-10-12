@@ -51,7 +51,8 @@ def test_app_runs_and_shows_the_model_result(app):
     r = dcf.run_dcf(**summary.build_model(data, summary.default_choices(data))["run_kwargs"])
     assert metric(at, "DCF: Gordon growth").value == f"${r['gordon']['value_per_share']:,.2f}"
     assert metric(at, "WACC (Gordon)").value.endswith("%")          # reverse DCF box is there
-    assert [t.label for t in at.tabs] == ["Summary", "DCF", "Scenarios", "Comps", "Data & quality"]
+    assert [t.label for t in at.tabs] == ["Summary", "DCF", "Scenarios", "Comps", "Precedent Transactions",
+                                         "Data & quality"]
 
 
 def test_changing_an_input_changes_the_value(app):
@@ -102,3 +103,18 @@ def test_scenarios_tab_and_weights_check(app):
     at.number_input(key="w_bull").set_value(40.0).run()          # 25 + 50 + 40 = 115%
     assert not at.exception
     assert any("add up to 115.0%" in w.value for w in at.warning)
+
+
+def test_precedent_tab_default_and_toggles(app):
+    at = app
+    texts = " ".join(w.value for w in at.warning)
+    assert "Small sample: only 4 deals" in texts
+    at.toggle(key="prec_secondary").set_value(True).run()
+    assert not at.exception
+    assert "Small sample" not in " ".join(w.value for w in at.warning)      # 6 deals >= threshold of 5
+
+
+def test_precedent_row_hidden_for_other_sub_sector(app):
+    at = choose(app, "HD", "LOW, TJX")
+    assert not at.exception
+    assert any("from other sub-sectors" in i.value for i in at.info)

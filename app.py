@@ -21,6 +21,7 @@ import config
 import data_loader as dl
 import dcf
 import export
+import precedents
 import scenarios
 import summary
 
@@ -91,10 +92,10 @@ def load_data(tickers: tuple, refresh_token: int, refresh: bool) -> dict:
 
 @st.cache_data(show_spinner="Building the Excel file...")
 def excel_bytes(key: str, _data: dict, _choices: dict, target: str, peers: tuple, _scenarios: dict,
-                _weights: dict) -> bytes:
+                _weights: dict, _prec: pd.DataFrame, _prec_settings: dict) -> bytes:
     # The underscore arguments are not hashed; `key` identifies the data and the inputs
     return export.build_workbook(_data, _choices, target, list(peers), scenario_values=_scenarios,
-                                 weights=_weights)
+                                 weights=_weights, precedent_deals=_prec, precedent_settings=_prec_settings)
 
 
 tickers = (TARGET, *PEERS)
@@ -296,7 +297,27 @@ weights = {sc: (st.session_state[f"w_{sc}"] or 0) / 100 for sc in config.SCENARI
 sc_runs = scenarios.run_scenarios(data, choices, sc_values, TARGET)
 sc_results = scenarios.results_table(sc_runs, weights)
 
-ff = summary.football_field_data(companies, kw, TARGET, PEERS, scenario_runs=sc_runs if HAS_DCF else None)
+# ---------------------------------------------------------------------------
+# Precedent transactions: built-in file or the user's upload (this session only).
+# The settings are drawn in their tab, read here first for the football field.
+# ---------------------------------------------------------------------------
+
+prec_error = None
+uploaded = st.session_state.get("prec_upload")
+try:
+    prec_all = precedents.load_precedents(uploaded.getvalue() if uploaded is not None else None)
+except precedents.PrecedentFileError as e:
+    prec_error = str(e)
+    prec_all = precedents.load_precedents()
+prec_settings = {"include_secondary": bool(st.session_state.get("prec_secondary", False)),
+                 "include_terminated": bool(st.session_state.get("prec_terminated", False))}
+prec_mask = precedents.included_mask(prec_all, **prec_settings)
+prec_deals = prec_all[prec_mask]
+prec_applies = precedents.applicable(companies[TARGET]["meta"], TARGET, prec_deals)
+prec_row = precedents.football_field_row(tv, prec_deals) if prec_applies else None
+
+ff = summary.football_field_data(companies, kw, TARGET, PEERS, scenario_runs=sc_runs if HAS_DCF else None,
+                                 precedent_row=prec_row)
 reverse = summary.reverse_dcf(kw)
 mtable, exclusions = comps.multiples_table(companies)
 pstats = comps.peer_stats(mtable, PEERS)
@@ -318,7 +339,8 @@ if stale:
     st.warning(f"Live download from Yahoo Finance failed, so saved data is shown for {', '.join(stale)} "
                f"(from {', '.join(dates)}). Try **Refresh data** later.")
 
-tab_summary, tab_dcf, tab_sc, tab_comps, tab_data = st.tabs(["Summary", "DCF", "Scenarios", "Comps", "Data & quality"])
+tab_summary, tab_dcf, tab_sc, tab_comps, tab_prec, tab_data = st.tabs(
+    ["Summary", "DCF", "Scenarios", "Comps", "Precedent Transactions", "Data & quality"])
 
 
 # ---------------------------------------------------------------------------
@@ -342,6 +364,7 @@ with tab_summary:
     st.caption("Bars: comps = peer 25th-75th percentile, tick = median; DCF = WACC "
                f"±{config.FF_WACC_DELTA:.1%} x terminal growth ±{config.FF_GROWTH_DELTA:.1%} "
                f"(Gordon) or exit multiple ±{config.FF_MULTIPLE_DELTA:.0f}x, tick = base case. "
+               + ("Precedents = 25th-75th percentile of the deals' EV/EBITDA (see their tab). " if prec_row else "")
                + ("P/B is shown because the target is a financial company." if summary.is_financial(data, TARGET)
                   else "P/B is left out (see the Comps tab).")
                + ("" if HAS_DCF else " DCF rows appear once a risk-free rate is entered."))
@@ -366,9 +389,11 @@ with tab_summary:
         st.dataframe(view.set_index("label"), width="stretch")
 
     excel_key = repr((tickers, companies[TARGET]["meta"].get("fetched_at"), sorted(choices.items()),
-                      sorted((k, sorted(v.items())) for k, v in sc_values.items()), sorted(weights.items())))
+                      sorted((k, sorted(v.items())) for k, v in sc_values.items()), sorted(weights.items()),
+                      sorted(prec_settings.items()), prec_all.to_csv(index=False)))
     st.download_button("Download Excel model", type="primary",
-                       data=excel_bytes(excel_key, data, choices, TARGET, tuple(PEERS), sc_values, weights),
+                       data=excel_bytes(excel_key, data, choices, TARGET, tuple(PEERS), sc_values, weights,
+                                        prec_all, prec_settings),
                        file_name=f"{TARGET}_valuation.xlsx",
                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                        help="DCF and WACC sheets use live Excel formulas; the other sheets hold values.")
@@ -563,6 +588,99 @@ with tab_comps:
         f = mult if "multiple" in step else pct if "Upside" in step else cur if "per share" in step else money
         b.loc[step] = bridge[choice].loc[step].map(f).values
     st.dataframe(b, width="stretch")
+
+
+# ---------------------------------------------------------------------------
+# Precedent transactions
+# ---------------------------------------------------------------------------
+
+with tab_prec:
+    st.markdown(
+        "What acquirers actually paid for comparable companies. A buyer taking control usually pays a "
+        "**control premium**, so precedent multiples often come out above trading multiples; older deals also "
+        "reflect the market conditions of their time. **Only EV/EBITDA is used**: it is the standard yardstick in "
+        "acquisitions, and EV/Sales would compare businesses with very different margins.")
+    if prec_error:
+        st.error(f"Your file could not be used, so the built-in deals are shown. {prec_error}")
+    c1, c2 = st.columns(2)
+    c1.toggle("Include second-tier deals (Staples, At Home)", key="prec_secondary",
+              help="Less similar business models; left out by default.")
+    c2.toggle("Include terminated deals (Kroger-Albertsons)", key="prec_terminated",
+              help="Agreed but never completed, so the price was never paid; left out by default.")
+
+    view = prec_all.copy()
+    view.insert(0, "In calculation", prec_mask.map({True: "Yes", False: "No"}))
+    view["announcement_date"] = view["announcement_date"].dt.strftime("%Y-%m-%d")
+    view["enterprise_value"] = view["enterprise_value"].map(lambda x: "N/A" if _missing(x) else f"{x:,.0f}")
+    view["ev_ebitda"] = view["ev_ebitda"].map(mult)
+    view["premium_pct"] = view["premium_pct"].map(lambda x: "N/A" if _missing(x) else f"{x:.1f}%")
+    view = view.rename(columns={"announcement_date": "Announced", "target": "Target", "acquirer": "Acquirer",
+                                "status": "Status", "tier": "Tier", "deal_type": "Type",
+                                "enterprise_value": "EV (m)", "currency": "Ccy", "ev_ebitda": "EV / LTM EBITDA",
+                                "premium_pct": "Premium (info only)", "source_url": "Source"})
+    st.dataframe(view[["In calculation", "Announced", "Target", "Acquirer", "Status", "Tier", "Type", "EV (m)", "Ccy",
+                       "EV / LTM EBITDA", "Premium (info only)", "Source"]], width="stretch", hide_index=True,
+                 column_config={"Source": st.column_config.LinkColumn("Source", display_text="SEC filing")})
+    st.caption("Premiums are for information only and are not used: they are measured against different reference "
+               "prices (a single close, 10- to 30-day averages, or a price months before the announcement).")
+    with st.expander("Sources and notes for every figure"):
+        for _, d in prec_all.iterrows():
+            st.markdown(f"**{d['target']} / {d['acquirer']}** ({d['announcement_date']:%Y-%m-%d}): {d['notes']}")
+
+    pv = precedents.valuation(tv, prec_deals)
+    n_deals = int(pv["stats"]["count"])
+    if not prec_applies:
+        sectors = ", ".join(sorted(set(prec_deals["sector"]))) or "none"
+        st.info(f"The deals in the calculation are from other sub-sectors ({sectors}) than {TARGET}, so they are "
+                f"not used for it and the football field has no precedent row. You can upload your own CSV with "
+                f"deals from {TARGET}'s sector below.")
+    elif n_deals == 0:
+        st.warning("No deal in the calculation: switch on more deals above or upload your own file.")
+    else:
+        if pv["small_sample"]:
+            st.warning(f"Small sample: only {n_deals} deals in the calculation. Treat the range as a rough "
+                       f"reference, not a market benchmark.")
+        st.subheader(f"Implied value per share ({CCY})")
+        st_ = pv["stats"]
+        st.dataframe(pd.DataFrame({"EV / LTM EBITDA": [mult(st_[k]) for k in ["min", "p25", "median", "mean", "p75", "max"]]},
+                                  index=["Min", "25th percentile", "Median", "Mean", "75th percentile", "Max"]).T,
+                     width="stretch")
+        b = pv["bridge"]
+        rows = {"Target metric (TTM EBITDA)": [money(b["metric"])] * 3,
+                "x Precedent multiple": [mult(x) for x in b["multiples"]],
+                "= Implied enterprise value": [money(x) for x in b["implied_ev"]],
+                "- Net debt": [money(b["net_debt"])] * 3,
+                "= Implied equity value": [money(x) for x in b["equity_value"]],
+                "/ Shares outstanding": [money(b["shares"])] * 3,
+                "= Implied value per share": [cur(x) for x in b["per_share"]],
+                "Upside vs current price": [pct(x / price - 1) for x in b["per_share"]]}
+        st.dataframe(pd.DataFrame(rows, index=["Low", "Median", "High"]).T, width="stretch")
+        st.caption(f"Range: {pv['method'].replace('peers', 'deals')}, the same rule as the comps.")
+
+    if TARGET in config.PRECEDENT_SELECTED_FOR and uploaded is None and not prec_error:   # describes the built-in deals
+        default_deals = prec_all[precedents.included_mask(prec_all)]
+        d_med = precedents.multiple_stats(default_deals)["median"]
+        own = mtable.loc[TARGET, "ev_ebitda"] if TARGET in mtable.index else float("nan")
+        st.subheader("Commentary")
+        st.markdown(
+            f"The precedent multiples (median about **{d_med:.1f}x** for the default deals) sit below {TARGET}'s own "
+            f"EV/EBITDA (**{mult(own)}**) and the comps median (**{mult(pstats.loc['median', 'ev_ebitda'])}**). "
+            "Most of the deals involve smaller grocery chains, where margins are typically thin, or companies under "
+            "pressure; half of them were leveraged buyouts by private equity funds, which can only pay what the "
+            "debt and their return targets allow; and they come from different market periods. Amazon's purchase "
+            "of Whole Foods, the only deal by an outside operating company seeking synergies, has the highest "
+            "multiple (10.6x). So the usual rule that precedent values come out above the comps does not hold in "
+            "this sample.")
+
+    st.subheader("Use your own deals")
+    st.file_uploader("Upload a precedents CSV (same columns as the template; used for this session only)",
+                     type="csv", key="prec_upload")
+    st.download_button("Download the CSV template", data=precedents.template_csv(), file_name="precedents_template.csv",
+                       mime="text/csv")
+    st.caption("Amounts in millions; ev_ebitda as a number (e.g. 7.1); status completed / terminated / pending; "
+               "tier core / secondary; sector must match the target's sector code to be shown "
+               f"({TARGET}: {precedents.target_sector(companies[TARGET]['meta']) or 'not mapped'}). "
+               "Lines starting with # are comments.")
 
 
 # ---------------------------------------------------------------------------

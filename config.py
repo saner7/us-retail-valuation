@@ -128,6 +128,24 @@ SCENARIO_TERMINAL_STEP = 0.005     # terminal growth: Base -/+ 0.5 percentage po
 # assuming it trades like the group's most premium members in 5 years is too optimistic.
 BULL_EXIT_CAP_VS_OWN = 1.35
 
+# --- Precedent transactions (Stage C) ----------------------------------------
+PRECEDENTS_PATH = DATA_DIR / "precedents.csv"
+# Fewer deals than this in the calculation -> "small sample" warning
+PRECEDENT_SMALL_SAMPLE = 5
+# Yahoo country + industry -> the `sector` codes used in precedents.csv. The
+# precedent row is shown only if the target's code matches a sector of the deals
+# in the calculation (or the target is one the deal list was selected for).
+PRECEDENT_SECTORS = {
+    ("United States", "Grocery Stores"): "us_retail_grocery",
+    ("United States", "Department Stores"): "us_retail_department",
+    ("United States", "Discount Stores"): "us_retail_discount",
+    ("United States", "Home Improvement Retail"): "us_retail_specialty",
+    ("United States", "Specialty Retail"): "us_retail_specialty",
+    ("United States", "Apparel Retail"): "us_retail_specialty",
+    ("United States", "Home Furnishings & Fixtures"): "us_retail_specialty",
+}
+PRECEDENT_SELECTED_FOR = {"TGT"}    # the default deal list was chosen for Target
+
 # --- Football field (Stage 4) ----------------------------------------------
 # DCF bars span every combination of base WACC +/- FF_WACC_DELTA with terminal
 # growth +/- FF_GROWTH_DELTA (Gordon) or exit multiple +/- FF_MULTIPLE_DELTA (exit).
@@ -136,7 +154,7 @@ FF_GROWTH_DELTA = 0.005
 FF_MULTIPLE_DELTA = 1.0
 # Rows of the football field, top to bottom. P/B stays in the comps tables but is
 # not on the chart (see comps.MULTIPLE_NOTES).
-FOOTBALL_FIELD_ROWS = ["52w", "ev_ebitda", "pe", "ev_sales", "dcf_exit", "dcf_gordon"]
+FOOTBALL_FIELD_ROWS = ["52w", "ev_ebitda", "pe", "ev_sales", "prec_ev_ebitda", "dcf_exit", "dcf_gordon"]
 
 # --- SEC EDGAR -------------------------------------------------------------
 # The SEC asks every automated request to identify itself in the User-Agent and

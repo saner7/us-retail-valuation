@@ -13,8 +13,8 @@ import export
 import summary
 from fake_data import make_data
 
-SHEETS = ["Summary", "DCF", "Scenarios", "WACC", "Sensitivity", "Comps", "Bridge", "Market data", "Data quality",
-          "History"]
+SHEETS = ["Summary", "DCF", "Scenarios", "WACC", "Sensitivity", "Comps", "Bridge", "Precedents", "Market data",
+          "Data quality", "History"]
 
 
 @pytest.fixture(scope="module")

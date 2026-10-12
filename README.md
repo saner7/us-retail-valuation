@@ -130,6 +130,46 @@ summarises both in a "football field" chart, the way an investment banking pitch
 - Excel: a switch cell on the DCF sheet (1 = Bear, 2 = Base, 3 = Bull) drives the DCF through
   `INDEX`, and a Scenarios sheet values all three side by side with live formulas.
 
+### Precedent transactions (Stage C)
+What acquirers actually paid for comparable US retailers (`data/precedents.csv`). Every figure is
+traced to an SEC filing: the deal press release (8-K Ex.99.1), the merger proxy or tender offer
+statement (DEFM14A / DEFM14C / SC 14D-9) and the precedent-transaction tables in fairness opinions.
+The `source_url` and `notes` columns name the document and section for each number; empty means
+it was not found in a primary source.
+
+| Announced | Target / Acquirer | Status | Tier | EV ($m) | EV / LTM EBITDA |
+|---|---|---|---|---|---|
+| 2016-03-14 | The Fresh Market / Apollo funds | completed 2016-04-27 | core | 1,360 | 7.1x |
+| 2017-06-16 | Whole Foods Market / Amazon | completed 2017-08-28 | core | 13,700 | 10.6x |
+| 2019-04-16 | Smart & Final / Apollo funds | completed 2019-06-20 | core | 1,120 | 6.5x |
+| 2024-12-23 | Nordstrom / Nordstrom family and Liverpool | completed 2025-05-20 | core | 6,250 | 5.7x |
+| 2017-06-28 | Staples / Sycamore Partners | completed 2017-09-12 | second tier | 6,600 | 5.0x |
+| 2021-05-06 | At Home / Hellman & Friedman | completed 2021-07-23 | second tier | 2,830 | 7.9x |
+| 2022-10-14 | Albertsons / Kroger | terminated 2024-12-10 | core | 24,600 | 5.4x |
+
+- **Default calculation**: the four completed core deals (second-tier and terminated deals can be
+  switched on in the app). The range uses the comps rule (25th-75th percentile, median as mid)
+  and the same bridge to value per share. With fewer than five deals the app warns that the
+  sample is small.
+- **Only EV/EBITDA** is used: it is the standard yardstick in acquisitions, and EV/Sales would
+  compare businesses with very different margins. LTM revenue was not in the proxies either.
+- **Premiums are shown for information only**: they are measured against different reference
+  prices (a single close, 10- to 30-day averages, or a price months before the announcement).
+- Considered but left out: deals before 2016, sales in bankruptcy, loss-making e-commerce
+  targets, unsigned approaches, private targets without disclosed figures, distributors and
+  non-US deals; Family Dollar (distressed carve-out), Walgreens (loss-making, international),
+  Michaels and Foot Locker (business models too far from Target).
+- **Commentary.** Precedent values are usually expected above the comps, because buyers pay a
+  control premium. Not here: the precedent multiples (median about 6.8x) sit below Target's own
+  EV/EBITDA (9.7x) and the comps median (11.3x). Most deals involve smaller grocery chains, where
+  margins are typically thin, or companies under pressure; half of them were leveraged buyouts by
+  private equity funds, which can only pay what the debt and their return targets allow; and they
+  come from different market periods. Amazon's purchase of Whole Foods, the only deal by an
+  outside operating company seeking synergies, has the highest multiple (10.6x).
+- The precedent row appears only when the target's sub-sector (from Yahoo's country and industry)
+  matches the deals in the calculation, or for Target, for whom the list was selected. Other
+  companies can upload their own CSV in the app (template provided; used for that session only).
+
 ### Data quality checks
 Missing fields, zero or negative EBITDA, losses (P/E excluded), negative equity, price outside
 the 52-week range, price × shares vs market cap, our EV vs Yahoo's EV, reporting currency,
@@ -245,9 +285,12 @@ comps.py               trading multiples, peer statistics, implied value bridge
 dcf.py                 projection, FCFF, WACC, terminal value, sensitivity tables
 summary.py             football field data, reverse DCF, app inputs -> model
 charts.py              Plotly charts (football field, sensitivity heatmap)
-export.py              Excel export (DCF and WACC as live formulas)
+scenarios.py           Bear / Base / Bull scenarios and the probability-weighted value
+precedents.py          precedent transactions: loading, filters, EV/EBITDA range
+export.py              Excel export (DCF, WACC and Scenarios as live formulas)
 app.py                 Streamlit app
 data/manual_overrides.csv
+data/precedents.csv    precedent transactions with SEC sources
 data/cache/            downloaded data (not in git)
 data/snapshot/         saved copy of the data, used only if the live download fails
 .streamlit/config.toml app theme and settings (also used by Streamlit Community Cloud)
