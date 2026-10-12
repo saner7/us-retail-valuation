@@ -342,8 +342,9 @@ def _summary_sheet(wb, data, model, ff, reverse, results, target, peers, ccy):
             _put(ws, i, j, r[k], price_format(ccy))
         _put(ws, i, 5, r["basis"], font=NOTE)
     row = 10 + len(ff) + 1
-    _put(ws, row, 1, "Mid = peer median (comps) or base case (DCF). P/B is not in the football field: "
-                     "see the note on the Comps sheet.", font=NOTE)
+    pb_note = ("P/B is included because the target is a financial company." if summary.is_financial(data, target)
+               else "P/B is not in the football field: see the note on the Comps sheet.")
+    _put(ws, row, 1, f"Mid = peer median (comps) or base case (DCF). {pb_note}", font=NOTE)
 
     row += 2
     _header(ws, row, ["DCF (base case)", "Gordon growth", "Exit multiple"])

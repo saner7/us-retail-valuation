@@ -214,6 +214,13 @@ EBITDAR, i.e. before rent) is also consistent, but Yahoo does not report rent fo
   for all 5 years by default. Per-year inputs are supported.
 - Manual overrides are fixed numbers. They are checked for staleness but must be updated by hand.
 - The equity risk premium, credit spread and terminal growth are judgement calls, not data.
+- A company that reports in one currency but trades in another (e.g. Ferrari on the NYSE, `RACE`,
+  reports in EUR and trades in USD) has its statement figures converted at today's exchange rate,
+  and its DCF is then discounted with the trading currency's risk-free rate. Its cash flows are
+  really earned in the reporting currency, so this mixes two currencies' interest rates and
+  inflation: on 12 Oct 2026 `RACE` gave a Gordon value of $155 against EUR 200 for `RACE.MI`
+  (US 10-year yield 5.24% vs Bund 3.53%). The app warns about this; analyse the home listing
+  (`RACE.MI`) when there is one.
 
 ## Project structure
 ```
@@ -274,7 +281,8 @@ the default set is in `config.py`. Things to know:
 - The risk-free rate is downloaded only for USD; for other currencies the app asks you to enter
   the 10-year government bond yield (for the euro: the German Bund).
 - One-off items were checked only for the default set; banks and insurers get a warning, as
-  EV/EBITDA and an FCFF DCF do not fit them. Yahoo's saved fallback data exists only for the
+  EV/EBITDA and an FCFF DCF do not fit them, and their football field adds P/B (book value is
+  how financial companies are usually valued). Yahoo's saved fallback data exists only for the
   default set.
 - Example tested: Ferrari (`RACE.MI`) against luxury peers (LVMH, Hermès, Moncler, Richemont)
   rather than carmakers, because the market prices Ferrari as a luxury brand for its business

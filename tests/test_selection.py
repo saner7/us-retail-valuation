@@ -168,3 +168,26 @@ def test_overrides_only_apply_to_their_own_ticker():
     snap = {f: 1.0 for f in dl.RAW_FIELDS}
     values, sources = dl.apply_overrides(snap, "HD", overrides)
     assert set(sources.values()) == {"auto"}            # nothing from KR/TGT leaks into HD
+
+
+def test_pb_on_football_field_only_for_financial_targets():
+    bank = make_data(["JPM", "BAC", "C", "WFC"], industries={t: "Banks - Diversified" for t in ["JPM", "BAC", "C", "WFC"]})
+    kw = summary.build_model(bank, summary.default_choices(bank, "JPM"), "JPM")["run_kwargs"]
+    keys = list(summary.football_field_data(bank["companies"], kw, "JPM", ["BAC", "C", "WFC"])["key"])
+    assert keys.index("pb") == keys.index("pe") + 1          # P/B right after P/E
+    retail = make_data()
+    kw = summary.build_model(retail, summary.default_choices(retail), config.TARGET)["run_kwargs"]
+    assert "pb" not in set(summary.football_field_data(retail["companies"], kw)["key"])
+
+
+def test_target_reporting_in_another_currency_gets_a_risk_free_warning():
+    data = make_data(["RACE", "MC.PA"], currencies={"MC.PA": "EUR"})
+    data["companies"]["RACE"]["meta"]["fx"] = {"from": "EUR", "to": "USD", "rate": 1.12, "date": "2026-10-12"}
+    w = [x for x in summary.analysis_warnings(data, "RACE", ["MC.PA"]) if "reports in EUR but trades in USD" in x["text"]]
+    assert w and w[0]["level"] == "warning"
+    assert "EUR risk-free rate" in w[0]["text"] and "RACE.MI" in w[0]["text"]
+    # A peer with converted figures only gets the information note, not the target warning
+    data = make_data(["RACE.MI", "CFR.SW"], currencies={"RACE.MI": "EUR", "CFR.SW": "CHF"})
+    data["companies"]["CFR.SW"]["meta"]["fx"] = {"from": "EUR", "to": "CHF", "rate": 0.93, "date": "2026-10-12"}
+    assert not any(x["level"] == "warning" and "risk-free" in x["text"] and "CFR.SW reports" in x["text"]
+                   for x in summary.analysis_warnings(data, "RACE.MI", ["CFR.SW"]))

@@ -295,7 +295,8 @@ with tab_summary:
     st.caption("Bars: comps = peer 25th-75th percentile, tick = median; DCF = WACC "
                f"±{config.FF_WACC_DELTA:.1%} x terminal growth ±{config.FF_GROWTH_DELTA:.1%} "
                f"(Gordon) or exit multiple ±{config.FF_MULTIPLE_DELTA:.0f}x, tick = base case. "
-               "P/B is left out (see the Comps tab)."
+               + ("P/B is shown because the target is a financial company." if summary.is_financial(data, TARGET)
+                  else "P/B is left out (see the Comps tab).")
                + ("" if HAS_DCF else " DCF rows appear once a risk-free rate is entered."))
 
     with st.container(border=True):

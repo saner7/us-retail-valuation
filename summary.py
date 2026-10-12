@@ -49,7 +49,10 @@ def football_field_data(companies: dict, run_kwargs: dict, target: str = None,
     for tooltips and the Excel export)."""
     target = target or config.TARGET
     peers = peers or config.PEERS
-    row_order = row_order or config.FOOTBALL_FIELD_ROWS
+    row_order = list(row_order or config.FOOTBALL_FIELD_ROWS)
+    # Banks and insurers are valued on book value, so their chart shows P/B (after P/E)
+    if _is_financial_meta(companies[target]["meta"]) and "pb" not in row_order:
+        row_order.insert(row_order.index("pe") + 1 if "pe" in row_order else len(row_order), "pb")
     v = companies[target]["values"]
     rows = {"52w": {"label": "52-week trading range", "group": GROUPS["market"],
                     "low": v["low_52w"], "mid": np.nan, "high": v["high_52w"],
@@ -208,9 +211,14 @@ def target_currency(data: dict, target: str) -> str:
     return data["companies"][target]["meta"].get("currency") or "N/A"
 
 
-def is_financial(data: dict, ticker: str) -> bool:
-    industry = data["companies"][ticker]["meta"].get("industry") or ""
+def _is_financial_meta(meta: dict) -> bool:
+    industry = meta.get("industry") or ""
     return any(k.lower() in industry.lower() for k in config.FINANCIAL_INDUSTRY_KEYWORDS)
+
+
+def is_financial(data: dict, ticker: str) -> bool:
+    """Bank or insurer, judged from Yahoo's industry name."""
+    return _is_financial_meta(data["companies"][ticker]["meta"])
 
 
 def analysis_warnings(data: dict, target: str, peers: list) -> list:
@@ -248,6 +256,14 @@ def analysis_warnings(data: dict, target: str, peers: list) -> list:
             f"The group mixes currencies: {listed} vs {target} ({ccy}). Multiples are ratios measured within "
             f"each company's own currency, so they can be compared across currencies. All absolute amounts "
             f"(EV, equity value, share price) are shown in {target}'s trading currency, {ccy}.")})
+    t_fx = t_meta.get("fx")
+    if t_fx:
+        out.append({"level": "warning", "text": (
+            f"{target} reports in {t_fx['from']} but trades in {t_fx['to']}. Its cash flows are earned in "
+            f"{t_fx['from']}, so the DCF should be discounted with a {t_fx['from']} risk-free rate; here they are "
+            f"converted to {t_fx['to']} at today's rate and discounted with the {t_fx['to']} rate, which mixes "
+            f"two currencies' interest rates and inflation. If the company is also listed in {t_fx['from']} "
+            f"(on its home exchange), analyse that ticker instead, e.g. RACE.MI instead of RACE for Ferrari.")})
     for t in [target] + loaded_peers:
         fx = companies[t]["meta"].get("fx")
         if fx:
