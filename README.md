@@ -1,11 +1,8 @@
 # US Retail Valuation: Comparable Companies + DCF
 
-<!-- ============================================================
-     FILL IN BEFORE SHARING: replace the two placeholders below.
-     ============================================================ -->
-**Live app:** _[APP LINK ](https://tgt-valuation.streamlit.app/)]_
+**Live app:** [tgt-valuation.streamlit.app](https://tgt-valuation.streamlit.app/)
 
-_Interactive valuation of Target (NYSE: TGT) using comparable companies and a DCF, with a football field summary and a linked Excel model. Built as a learning project by an IB Diploma student interested in investment banking.
+_Interactive valuation of Target (NYSE: TGT) using comparable companies and a DCF, with a football field summary and a linked Excel model. Built as a learning project by an IB Diploma student interested in investment banking._
 
 ---
 
