@@ -59,6 +59,10 @@ def test_stats_range_and_bridge():
     assert v["small_sample"]                                     # 4 deals < 5
     three = precedents.valuation(target, deals.iloc[:3])
     assert three["multiples"] == pytest.approx((6.0, 8.0, 10.0)) and "min-max" in three["method"]
+    # the range description follows the rule actually used (quartiles from 4 deals)
+    assert v["method"].startswith("25th-75th percentile (4")
+    assert precedents.football_field_row(target, deals)["basis"].startswith("25th-75th percentile (4 deals)")
+    assert precedents.football_field_row(target, deals.iloc[:3])["basis"].startswith("min-max (only 3 deals)")
 
 
 def test_file_errors_are_explained():

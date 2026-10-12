@@ -324,7 +324,7 @@ pstats = comps.peer_stats(mtable, PEERS)
 price = tv["price"]
 
 st.title(f"{NAME} ({TARGET}) valuation")
-st.caption(f"Trading comparables + DCF. Amounts in {CCY}. For educational purposes only, not investment advice.")
+st.caption(f"Trading comparables, precedent transactions and DCF with scenarios. Amounts in {CCY}. For educational purposes only, not investment advice.")
 
 for note in selection_notes:
     st.info(note)
@@ -361,10 +361,11 @@ with tab_summary:
 
     st.plotly_chart(charts.football_field(ff, price, f"{TARGET} football field: value per share", CCY),
                     width="stretch")
-    st.caption("Bars: comps = peer 25th-75th percentile, tick = median; DCF = WACC "
+    st.caption(f"Bars: comps = peer 25th-75th percentile (min-max with fewer than {config.MIN_PEERS_FOR_QUARTILES} "
+               "peers), tick = median; DCF = WACC "
                f"±{config.FF_WACC_DELTA:.1%} x terminal growth ±{config.FF_GROWTH_DELTA:.1%} "
                f"(Gordon) or exit multiple ±{config.FF_MULTIPLE_DELTA:.0f}x, tick = base case. "
-               + ("Precedents = 25th-75th percentile of the deals' EV/EBITDA (see their tab). " if prec_row else "")
+               + (f"Precedents = deals' EV/EBITDA, {prec_row['basis']}, tick = median (see their tab). " if prec_row else "")
                + ("P/B is shown because the target is a financial company." if summary.is_financial(data, TARGET)
                   else "P/B is left out (see the Comps tab).")
                + ("" if HAS_DCF else " DCF rows appear once a risk-free rate is entered."))

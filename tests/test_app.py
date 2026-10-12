@@ -109,6 +109,8 @@ def test_precedent_tab_default_and_toggles(app):
     at = app
     texts = " ".join(w.value for w in at.warning)
     assert "Small sample: only 4 deals" in texts
+    captions = " ".join(c.value for c in at.caption)
+    assert "Precedents = deals' EV/EBITDA, 25th-75th percentile (4 deals)" in captions
     at.toggle(key="prec_secondary").set_value(True).run()
     assert not at.exception
     assert "Small sample" not in " ".join(w.value for w in at.warning)      # 6 deals >= threshold of 5

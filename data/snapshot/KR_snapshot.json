@@ -19,6 +19,10 @@
     "financial_currency": "USD",
     "yahoo_enterprise_value": 58891886592,
     "beta": 0.353,
-    "data_source": "live"
+    "data_source": "live",
+    "name": "The Kroger Co.",
+    "sector": "Consumer Defensive",
+    "industry": "Grocery Stores",
+    "country": "United States"
   }
 }

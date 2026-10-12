@@ -19,6 +19,10 @@
     "financial_currency": "USD",
     "yahoo_enterprise_value": 15195443200,
     "beta": 0.166,
-    "data_source": "live"
+    "data_source": "live",
+    "name": "BJ's Wholesale Club Holdings, Inc.",
+    "sector": "Consumer Defensive",
+    "industry": "Discount Stores",
+    "country": "United States"
   }
 }
