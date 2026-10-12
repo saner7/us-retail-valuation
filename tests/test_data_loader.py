@@ -24,6 +24,7 @@ def sample_snapshot():
         "book_value_per_share": 4.0,
         "low_52w": 8.0,
         "high_52w": 12.0,
+        "lease_liabilities": 50.0,
     }
 
 
@@ -43,12 +44,28 @@ def sample_history(last_end="2026-01-31"):
 
 
 def test_net_debt_ev_and_equity():
-    values, sources = build(sample_snapshot())
-    assert values["net_debt"] == 200.0             # 300 - 100
-    assert values["enterprise_value"] == 1200.0    # 1000 + 200
+    values, sources = build(sample_snapshot())     # leases excluded by default
+    assert values["debt_for_ev"] == 250.0          # 300 - 50 leases
+    assert values["net_debt"] == 150.0             # 250 - 100
+    assert values["enterprise_value"] == 1150.0    # 1000 + 150
     assert values["total_equity"] == 400.0         # 4 x 100
     assert sources["enterprise_value"] == "derived"
     assert sources["price"] == "auto"
+
+
+def test_leases_can_be_kept_in_debt():
+    values, sources = dl.apply_overrides(sample_snapshot(), "TEST.IS", no_overrides())
+    values, _ = dl.compute_derived(values, sources, exclude_leases=False)
+    assert values["debt_for_ev"] == 300.0
+    assert values["net_debt"] == 200.0
+
+
+def test_missing_lease_data_is_not_treated_as_zero():
+    snap = sample_snapshot()
+    snap["lease_liabilities"] = None
+    values, sources = build(snap)
+    assert math.isnan(values["net_debt"])
+    assert sources["net_debt"] == "missing"
 
 
 def test_override_replaces_auto_value_and_flows_into_derived():
@@ -57,8 +74,8 @@ def test_override_replaces_auto_value_and_flows_into_derived():
     values, sources = build(sample_snapshot(), overrides)
     assert values["cash"] == 250.0
     assert sources["cash"] == "manual"
-    assert values["net_debt"] == 50.0              # 300 - 250, uses the override
-    assert values["enterprise_value"] == 1050.0
+    assert values["net_debt"] == 0.0               # (300 - 50) - 250, uses the override
+    assert values["enterprise_value"] == 1000.0
 
 
 def test_manual_override_of_derived_field_is_kept():
@@ -80,7 +97,7 @@ def test_missing_input_gives_nan_not_a_guess():
 
 def run_checks(snapshot, history=None, meta=None):
     values, sources = build(snapshot)
-    meta = meta or {"financial_currency": "USD", "yahoo_enterprise_value": 1200.0}
+    meta = meta or {"financial_currency": "USD", "yahoo_enterprise_value": 1200.0}  # incl. leases
     history = sample_history() if history is None else history
     q = dl.quality_checks("TEST.IS", values, sources, meta, history, today=datetime(2026, 6, 30))
     return q.set_index("field")["status"]

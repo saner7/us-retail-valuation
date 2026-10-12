@@ -38,16 +38,21 @@ SNAPSHOT_FIELDS = {
     "high_52w": "fiftyTwoWeekHigh",
 }
 
-# Fields we calculate ourselves from the raw fields (see compute_derived)
-DERIVED_FIELDS = ["net_debt", "enterprise_value", "total_equity"]
+# Raw fields read from the statements instead of the summary (see lease_liabilities)
+STATEMENT_FIELDS = ["lease_liabilities"]
+RAW_FIELDS = list(SNAPSHOT_FIELDS) + STATEMENT_FIELDS
 
-ALL_FIELDS = list(SNAPSHOT_FIELDS) + DERIVED_FIELDS
+# Fields we calculate ourselves from the raw fields (see compute_derived)
+DERIVED_FIELDS = ["debt_for_ev", "net_debt", "enterprise_value", "total_equity"]
+
+ALL_FIELDS = RAW_FIELDS + DERIVED_FIELDS
 
 STATEMENTS = {
     "income": "income_stmt",
     "cashflow": "cashflow",
     "balance": "balance_sheet",
     "income_q": "quarterly_income_stmt",   # used to build trailing-twelve-month figures
+    "balance_q": "quarterly_balance_sheet",  # used for the latest lease liabilities
 }
 
 # TTM fields we rebuild from the last 4 quarters: our field -> quarterly row name.
@@ -70,6 +75,7 @@ ANNUAL_ITEMS = {
     ("income", "Net Income"): "net_income",
     ("income", "Pretax Income"): "pretax_income",
     ("income", "Tax Provision"): "tax_provision",
+    ("income", "Interest Expense"): "interest_expense",
     ("cashflow", "Depreciation And Amortization"): "d_and_a",
     ("cashflow", "Capital Expenditure"): "capex",
     ("cashflow", "Change In Working Capital"): "change_in_wc",
@@ -104,6 +110,7 @@ def fetch_from_yahoo(ticker: str) -> dict:
         "currency": info.get("currency"),                     # currency of the share price
         "financial_currency": info.get("financialCurrency"),  # currency of the reports
         "yahoo_enterprise_value": info.get("enterpriseValue"),  # kept only as a cross-check
+        "beta": info.get("beta"),   # Yahoo: 5-year monthly beta vs the S&P 500, used in the WACC
     }
 
     statements = {}
@@ -245,6 +252,19 @@ def replace_ttm(snapshot: dict, quarterly: pd.DataFrame):
     return snapshot, notes
 
 
+def lease_liabilities(balance_q: pd.DataFrame):
+    """Lease liabilities from the most recent quarterly balance sheet.
+    Returns (value, date) or (NaN, None) if Yahoo has no such row."""
+    row = "Capital Lease Obligations"   # Yahoo's name; in practice mostly operating leases
+    if balance_q.empty or row not in balance_q.index:
+        return np.nan, None
+    series = balance_q.loc[row].dropna()
+    if series.empty:
+        return np.nan, None
+    latest = max(series.index)
+    return float(series[latest]), latest
+
+
 # ---------------------------------------------------------------------------
 # 4) Manual overrides
 # ---------------------------------------------------------------------------
@@ -269,7 +289,7 @@ def apply_overrides(snapshot: dict, ticker: str, overrides: pd.DataFrame):
     Returns (values, sources). sources[field] is 'auto', 'manual' or 'missing'.
     """
     values, sources = {}, {}
-    for field in SNAPSHOT_FIELDS:
+    for field in RAW_FIELDS:
         value = snapshot.get(field)
         values[field] = np.nan if is_missing(value) else float(value)
         sources[field] = "missing" if is_missing(value) else "auto"
@@ -280,16 +300,20 @@ def apply_overrides(snapshot: dict, ticker: str, overrides: pd.DataFrame):
     return values, sources
 
 
-def compute_derived(values: dict, sources: dict):
+def compute_derived(values: dict, sources: dict, exclude_leases: bool = None):
     """Calculate net debt, EV and total equity.
 
-    Net debt         = total debt - cash
+    Debt for EV      = total debt - lease liabilities   (if exclude_leases)
+                     = total debt                       (otherwise)
+    Net debt         = debt for EV - cash
     Enterprise value = market cap + net debt
     Total equity     = book value per share x shares outstanding
 
     A derived field is skipped if the user already overrode it manually.
     If any input is missing, the result is NaN (never a guess).
     """
+    if exclude_leases is None:
+        exclude_leases = config.EXCLUDE_LEASES_FROM_DEBT
     values, sources = dict(values), dict(sources)
 
     def put(field, result):
@@ -298,7 +322,11 @@ def compute_derived(values: dict, sources: dict):
         values[field] = result
         sources[field] = "missing" if math.isnan(result) else "derived"
 
-    put("net_debt", values["total_debt"] - values["cash"])
+    if exclude_leases:
+        put("debt_for_ev", values["total_debt"] - values["lease_liabilities"])
+    else:
+        put("debt_for_ev", values["total_debt"])
+    put("net_debt", values["debt_for_ev"] - values["cash"])
     put("enterprise_value", values["market_cap"] + values["net_debt"])
     put("total_equity", values["book_value_per_share"] * values["shares_outstanding"])
     return values, sources
@@ -364,11 +392,16 @@ def quality_checks(ticker: str, values: dict, sources: dict, meta: dict,
         flag("market_cap", "Suspicious",
              f"Price x shares differs from market cap by {implied_mcap / v['market_cap'] - 1:+.1%}")
 
+    if v["lease_liabilities"] > v["total_debt"]:
+        flag("lease_liabilities", "Suspicious", "Lease liabilities are larger than total debt")
+
+    # Yahoo's EV includes leases, so compare like for like
     yahoo_ev = meta.get("yahoo_enterprise_value")
     if not is_missing(yahoo_ev) and v["enterprise_value"] > 0:
-        diff = v["enterprise_value"] / yahoo_ev - 1
+        comparable = v["market_cap"] + v["total_debt"] - v["cash"]
+        diff = comparable / yahoo_ev - 1
         if abs(diff) > config.EV_MISMATCH_TOLERANCE:
-            flag("enterprise_value", "Suspicious", f"Differs from Yahoo's EV by {diff:+.1%}")
+            flag("enterprise_value", "Suspicious", f"Differs from Yahoo's EV by {diff:+.1%} (both incl. leases)")
 
     rows = []
     for field in ALL_FIELDS:
@@ -422,6 +455,8 @@ def quality_checks(ticker: str, values: dict, sources: dict, meta: dict,
 def load_company(ticker: str, overrides: pd.DataFrame, refresh: bool = False) -> dict:
     raw = get_company_raw(ticker, refresh)
     snapshot, ttm_notes = replace_ttm(raw["snapshot"], raw["statements"]["income_q"])
+    snapshot["lease_liabilities"], lease_date = lease_liabilities(raw["statements"]["balance_q"])
+    raw["meta"]["lease_date"] = lease_date.strftime("%Y-%m-%d") if lease_date is not None else None
     values, sources = apply_overrides(snapshot, ticker, overrides)
     values, sources = compute_derived(values, sources)
     history = annual_history(raw["statements"])

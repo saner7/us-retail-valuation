@@ -45,3 +45,26 @@ MIN_PEERS_FOR_QUARTILES = 4
 # Multiples above these caps are treated as "not meaningful" (NM) and excluded,
 # e.g. a P/E of 400x because earnings were almost zero that year.
 MULTIPLE_CAPS = {"ev_sales": 10.0, "ev_ebitda": 50.0, "pe": 100.0, "pb": 50.0}
+
+# --- Leases ----------------------------------------------------------------
+# Under US GAAP (ASC 842) store rent is an operating expense, so EBITDA is
+# already AFTER rent. Yahoo's "total debt" also contains lease liabilities.
+# Counting leases as debt too would count rent twice, so by default we remove
+# them: debt used for EV = total debt - lease liabilities.
+EXCLUDE_LEASES_FROM_DEBT = True
+
+# --- DCF (Stage 3) - all of these are editable in the app ------------------
+PROJECTION_YEARS = 5
+EQUITY_RISK_PREMIUM = 0.050       # assumption: extra return investors demand for stocks over bonds
+CREDIT_SPREAD = 0.0125            # assumption: pre-tax cost of debt = risk-free rate + this spread
+TERMINAL_GROWTH = 0.025           # assumption: long-run growth, roughly long-term US inflation/GDP
+MID_YEAR_CONVENTION = True
+
+# Sensitivity grid: WACC +/- 2% in 0.5% steps, terminal growth +/- 1% in 0.5% steps,
+# exit multiple +/- 2x in 1x steps
+SENS_WACC_RANGE, SENS_WACC_STEP = 0.02, 0.005
+SENS_GROWTH_RANGE, SENS_GROWTH_STEP = 0.01, 0.005
+SENS_MULTIPLE_RANGE, SENS_MULTIPLE_STEP = 2.0, 1.0
+
+# Warn if the terminal value is more than this share of enterprise value
+TERMINAL_VALUE_WARNING = 0.75
