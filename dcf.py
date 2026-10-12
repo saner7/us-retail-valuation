@@ -75,18 +75,23 @@ def recent_growth(history: pd.DataFrame, revenue_ttm: float) -> float:
 
 
 def growth_path(start: float, end: float, years: int = None) -> list:
-    """Straight line from `start` (Year 1) to `end` (final year)."""
+    """Straight line from `start` (Year 1) to `end` (final year). Used for
+    revenue growth and the EBITDA margin."""
     years = years or config.PROJECTION_YEARS
     return [float(x) for x in np.linspace(start, end, years)]
 
 
 def default_assumptions(history: pd.DataFrame, revenue_ttm: float = None,
-                        terminal_growth: float = None, n_years: int = None) -> dict:
+                        terminal_growth: float = None, n_years: int = None,
+                        ebitda_ttm: float = None) -> dict:
     """Default assumptions, all editable in the app.
 
-    - Margins and ratios: average of the last `n_years` fiscal years
+    - D&A, capex and tax rate: average of the last `n_years` fiscal years
       (config.DEFAULT_HISTORY_YEARS), so one unusual old year does not
       drive the whole forecast.
+    - EBITDA margin: a list, Year 1 = current TTM margin (after manual one-off
+      adjustments), moving in a straight line to the last `n_years` average in
+      the final year. Without TTM data the average is used for every year.
     - Increase in NWC: config.DEFAULT_NWC_PCT (0%), because the history is too volatile.
     - Revenue growth: a list, Year 1 = TTM revenue vs the last fiscal year, falling
       in a straight line to the terminal growth rate in the final year. Without
@@ -101,6 +106,8 @@ def default_assumptions(history: pd.DataFrame, revenue_ttm: float = None,
     if math.isnan(start):
         start = revenue_cagr(history)
     defaults["revenue_growth"] = growth_path(start, terminal_growth)
+    if not (dl.is_missing(ebitda_ttm) or dl.is_missing(revenue_ttm)) and revenue_ttm > 0:
+        defaults["ebitda_margin"] = growth_path(ebitda_ttm / revenue_ttm, defaults["ebitda_margin"])
     return defaults
 
 
@@ -374,7 +381,7 @@ def default_inputs(data: dict, ticker: str = None) -> dict:
     ticker = ticker or config.TARGET
     c = data["companies"][ticker]
     v = c["values"]
-    assumptions = default_assumptions(c["history"], revenue_ttm=v["revenue_ttm"])
+    assumptions = default_assumptions(c["history"], revenue_ttm=v["revenue_ttm"], ebitda_ttm=v["ebitda_ttm"])
 
     rf = data["risk_free"]["rate"]
     beta = c["meta"].get("beta")
@@ -436,7 +443,7 @@ def main():
     hr.columns = [ASSUMPTION_LABELS[c] for c in hr.columns]
     print(hr.T.apply(lambda col: col.map(_pct)).to_string())
     n = config.DEFAULT_HISTORY_YEARS
-    print(f"\nDefault assumptions vs history (default = last {n} fiscal years' average):")
+    print(f"\nDefault assumptions vs history (default = last {n} fiscal years' average unless noted):")
     ref = inputs["assumption_reference"]
     print(f"  {'':<45} {'default':>8} {'all yrs':>8} {f'last {n}y':>8} {'latest':>8} {'TTM':>8}")
     for k, label in ASSUMPTION_LABELS.items():
@@ -446,7 +453,8 @@ def main():
         print(f"  {label:<45} {shown:>8} {_pct(r['all_years_avg']):>8} {_pct(r[f'last_{n}y_avg']):>8} "
               f"{_pct(r['latest_year']):>8} {_pct(r['ttm']):>8}")
     print("  Revenue growth: Year 1 = TTM vs last fiscal year, straight line to terminal growth in "
-          "the final year ('all yrs' = CAGR). NWC default 0% (history too volatile).")
+          "the final year ('all yrs' = CAGR).\n  EBITDA margin: Year 1 = TTM (one-offs removed), straight "
+          f"line to the last {n} years' average in the final year. NWC default 0% (history too volatile).")
 
     print("\n=== WACC ===")
     print(f"  Risk-free rate (10y Treasury)   {_pct(wi['risk_free']):>7}")

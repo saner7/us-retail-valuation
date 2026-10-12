@@ -121,7 +121,7 @@ def sample_history():
 
 def test_default_assumptions_use_last_three_years():
     d = dcf.default_assumptions(sample_history(), revenue_ttm=127.05, terminal_growth=0.02, n_years=3)
-    assert d["ebitda_margin"] == pytest.approx(0.10)      # outlier year (5%) is left out
+    assert d["ebitda_margin"] == pytest.approx(0.10)      # no TTM EBITDA given: flat 3-year average
     assert d["capex_pct"] == pytest.approx(0.03)          # capex sign flipped to a cost; 10% year left out
     assert d["tax_rate"] == pytest.approx(0.25)           # (20% + 25% + 30%) / 3
     assert d["nwc_pct"] == 0.0                            # config default, not the volatile history
@@ -153,3 +153,13 @@ def test_implied_by_price_reverses_the_dcf():
     assert dcf.implied_by_price(kw, "wacc_rate", "gordon", 0.05, 0.20) == pytest.approx(0.10, abs=1e-6)
     # A price the model cannot reach in the range -> NaN
     assert math.isnan(dcf.implied_by_price(kw, "wacc_rate", "gordon", 0.05, 0.20, target_price=1e6))
+
+
+def test_ebitda_margin_moves_from_ttm_to_three_year_average():
+    # TTM margin 9.0 / 127.05 = 7.08%; 3-year average 10% (outlier year 5% left out)
+    d = dcf.default_assumptions(sample_history(), revenue_ttm=127.05, terminal_growth=0.02, n_years=3,
+                                ebitda_ttm=9.0)
+    start = 9.0 / 127.05
+    assert d["ebitda_margin"][0] == pytest.approx(start)
+    assert d["ebitda_margin"][-1] == pytest.approx(0.10)
+    assert d["ebitda_margin"][2] == pytest.approx((start + 0.10) / 2)   # straight line: middle year

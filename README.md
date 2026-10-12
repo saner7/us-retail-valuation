@@ -60,9 +60,11 @@ summarises both in a "football field" chart, the way an investment banking pitch
 ### DCF (Stage 3)
 - **5-year projection** starting from TTM revenue (Year 1 = the next twelve months).
   Default assumptions (all editable, each shown next to the history it comes from):
-  - EBITDA margin, D&A, capex (% of revenue) and tax rate: **average of the last 3 fiscal years**
-    (`DEFAULT_HISTORY_YEARS`). The all-years average, the latest year and, for the EBITDA
-    margin, the current TTM margin are shown for comparison.
+  - D&A, capex (% of revenue) and tax rate: **average of the last 3 fiscal years**
+    (`DEFAULT_HISTORY_YEARS`). The all-years average and the latest year are shown for comparison.
+  - EBITDA margin: Year 1 = **current TTM margin with one-offs removed**, moving in a
+    **straight line to the last 3 years' average** in Year 5. Start and end margin are
+    edited separately in the app.
   - Increase in net working capital: **0% of revenue** (`DEFAULT_NWC_PCT`), because the history
     swings by 2-3% of revenue with a single inventory build.
   - Revenue growth: Year 1 = TTM revenue vs the last full fiscal year (growth already visible
@@ -119,14 +121,21 @@ revenue shrinking 1.3% a year forever while capex stayed above D&A and the compa
 investing in working capital, and then a Gordon terminal value growing that depressed cash
 flow at 2.5% forever. Projected FCFF was about $2.2bn a year, against an actual free cash
 flow (operating cash flow - capex) of $3.7bn a year over the last three years.
-The defaults now use the last three years (8.0% margin, 3.6% capex), 0% working capital and
+The defaults now use the last three years for D&A, capex (3.6%) and tax, 0% working capital and
 a growth path that starts from the growth already visible in 2026 (+2.8%) and fades to 2.5%.
-Effect on the Gordon value per share: $47 -> $102.
+
+The EBITDA margin starts from where Target is today and moves to where it has been: Year 1 uses
+the current TTM margin with the tariff refund removed (7.7%), rising in a straight line to the
+last three years' average (8.0%) in Year 5. Starting at 8.0% straight away would assume the
+recovery has already happened; staying at 7.7% would ignore that 2023-2025 margins were
+steadily around 8%. Guidance supports a gradual path: in its Q2 2026 results Target guided its underlying 2026
+operating margin (excluding the refunds) to about 0.5 points above 2025's adjusted 4.6%, not a jump back to earlier levels.
+Effect on the Gordon value per share: $47 -> $101.
 
 ### Why the Gordon and exit multiple results differ
-- **Gordon growth: $102 (-33%)**. With WACC 9.2% and g 2.5%, the terminal value equals
+- **Gordon growth: $101 (-34%)**. With WACC 9.2% and g 2.5%, the terminal value equals
   6.3x final-year EBITDA.
-- **Exit multiple: $168 (+10%)**. The peer median EV/EBITDA of 11.3x implies a perpetual
+- **Exit multiple: $167 (+9%)**. The peer median EV/EBITDA of 11.3x implies a perpetual
   growth rate of 5.4%, which no mature retailer can sustain forever.
 
 The two methods ask different questions. Gordon asks what the cash flows are worth at
@@ -138,8 +147,8 @@ probably sits in between, and the gap is shown rather than hidden.
 ### What the current price implies (reverse DCF)
 With every other assumption unchanged, today's price of $153.64 implies:
 - a **WACC of 7.2%** (the model uses 9.2%), or
-- a **terminal growth rate of 4.8%** at the model WACC, or
-- an **exit multiple of 10.2x**.
+- a **terminal growth rate of 4.9%** at the model WACC, or
+- an **exit multiple of 10.3x**.
 
 The WACC is high because the risk-free rate is high (5.24%): cost of equity = 5.24% + 0.98 x 5.0%
 = 10.1%. We do not lower it to "fit" the price; the live rate is market data, and the
@@ -170,7 +179,7 @@ EBITDAR, i.e. before rent) is also consistent, but Yahoo does not report rent fo
   quarters have unequal lengths (12/12/12/16 weeks), but four consecutive quarters still cover a full year.
 - Yahoo usually provides only 4 years of annual statements, so the default DCF assumptions
   rest on 3-4 data points. One unusual year (e.g. a big working capital build) moves the average.
-- Apart from revenue growth (which fades to the terminal rate), the DCF uses the same assumption
+- Apart from revenue growth and the EBITDA margin (which move in a straight line), the DCF uses the same assumption
   for all 5 years by default. Per-year inputs are supported.
 - Manual overrides are fixed numbers. They are checked for staleness but must be updated by hand.
 - The equity risk premium, credit spread and terminal growth are judgement calls, not data.
