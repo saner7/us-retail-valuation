@@ -4,7 +4,8 @@ apply manual overrides and check data quality.
 Run directly for a quick look:
     python data_loader.py            # use cache if fresh
     python data_loader.py --refresh  # force a new download
-    python data_loader.py --usd      # show values in USD
+
+All money values are in USD (full units, not millions).
 """
 
 from __future__ import annotations
@@ -26,7 +27,7 @@ import config
 SNAPSHOT_FIELDS = {
     "price": "currentPrice",
     "market_cap": "marketCap",
-    "total_debt": "totalDebt",            # includes IFRS 16 lease liabilities
+    "total_debt": "totalDebt",            # Yahoo includes lease liabilities here
     "cash": "totalCash",
     "revenue_ttm": "totalRevenue",        # trailing twelve months (TTM)
     "ebitda_ttm": "ebitda",
@@ -42,9 +43,6 @@ DERIVED_FIELDS = ["net_debt", "enterprise_value", "total_equity"]
 
 ALL_FIELDS = list(SNAPSHOT_FIELDS) + DERIVED_FIELDS
 
-# Fields measured in money (TRY). Share counts are not converted to USD.
-MONEY_FIELDS = [f for f in ALL_FIELDS if f != "shares_outstanding"]
-
 STATEMENTS = {
     "income": "income_stmt",
     "cashflow": "cashflow",
@@ -53,8 +51,9 @@ STATEMENTS = {
 }
 
 # TTM fields we rebuild from the last 4 quarters: our field -> quarterly row name.
-# Why: Yahoo's own TTM summary numbers are unreliable for BIST stocks
-# (e.g. it showed negative EBITDA for SOK while every single quarter was positive).
+# Why: Yahoo's ready-made TTM summary numbers sometimes don't match the
+# quarterly statements. Summing the quarters ourselves is transparent, and
+# we still compare against Yahoo's number in the data quality report.
 TTM_ROWS = {
     "revenue_ttm": "Total Revenue",
     "ebitda_ttm": "EBITDA",
@@ -115,15 +114,14 @@ def fetch_from_yahoo(ticker: str) -> dict:
     return {"snapshot": snapshot, "meta": meta, "statements": statements}
 
 
-def fetch_fx_from_yahoo() -> dict:
-    """USD/TRY spot rate and yearly average rates (for converting old statements)."""
-    hist = yf.Ticker(config.FX_TICKER).history(period="10y")["Close"].dropna()
-    yearly = hist.groupby(hist.index.year).mean()
+def fetch_risk_free_from_yahoo() -> dict:
+    """Latest 10-year US Treasury yield. Yahoo quotes ^TNX in percent
+    (e.g. 4.25 means 4.25%), so we divide by 100 to get a decimal."""
+    hist = yf.Ticker(config.RISK_FREE_TICKER).history(period="1mo")["Close"].dropna()
     return {
         "fetched_at": datetime.now().isoformat(timespec="seconds"),
-        "spot": float(hist.iloc[-1]),
-        "spot_date": hist.index[-1].strftime("%Y-%m-%d"),
-        "yearly_average": {str(year): float(rate) for year, rate in yearly.items()},
+        "rate": float(hist.iloc[-1]) / 100,
+        "date": hist.index[-1].strftime("%Y-%m-%d"),
     }
 
 
@@ -187,8 +185,9 @@ def get_company_raw(ticker: str, refresh: bool = False) -> dict:
         raise
 
 
-def get_fx(refresh: bool = False) -> dict:
-    path = config.CACHE_DIR / "fx_USDTRY.json"
+def get_risk_free_rate(refresh: bool = False) -> dict:
+    """10-year Treasury yield, cached like company data. Used later in the WACC."""
+    path = config.CACHE_DIR / "risk_free_rate.json"
     cached = None
     if path.exists():
         with open(path) as f:
@@ -196,16 +195,16 @@ def get_fx(refresh: bool = False) -> dict:
         if not refresh and _is_fresh(cached["fetched_at"], config.CACHE_MAX_AGE_HOURS):
             return cached
     try:
-        fx = fetch_fx_from_yahoo()
+        rf = fetch_risk_free_from_yahoo()
     except Exception as e:
         if cached:
-            warnings.warn(f"FX download failed ({e}); using cache from {cached['fetched_at']}")
+            warnings.warn(f"Risk-free rate download failed ({e}); using cache from {cached['fetched_at']}")
             return cached
         raise
     config.CACHE_DIR.mkdir(parents=True, exist_ok=True)
     with open(path, "w") as f:
-        json.dump(fx, f, indent=2)
-    return fx
+        json.dump(rf, f, indent=2)
+    return rf
 
 
 # ---------------------------------------------------------------------------
@@ -311,7 +310,11 @@ def compute_derived(values: dict, sources: dict):
 
 def annual_history(statements: dict) -> pd.DataFrame:
     """Pick the line items the DCF needs. Rows = fiscal years, columns = items.
-    Items Yahoo doesn't provide stay NaN."""
+    Items Yahoo doesn't provide stay NaN.
+
+    The index is the fiscal year END DATE, not a calendar year, because US
+    retailers close their year at different times (Target/Walmart: late
+    January, Costco: end of August)."""
     rows = {}
     for (stmt, yf_row), name in ANNUAL_ITEMS.items():
         df = statements.get(stmt, pd.DataFrame())
@@ -322,8 +325,8 @@ def annual_history(statements: dict) -> pd.DataFrame:
     hist = pd.DataFrame(rows)
     if hist.empty:
         return hist
-    hist.index = pd.to_datetime(hist.index).year
-    hist.index.name = "fiscal_year"
+    hist.index = pd.to_datetime(hist.index)
+    hist.index.name = "fiscal_year_end"
     # Yahoo sometimes adds an extra year where every value is empty: drop it
     return hist.dropna(how="all").sort_index()
 
@@ -350,8 +353,7 @@ def quality_checks(ticker: str, values: dict, sources: dict, meta: dict,
     if v["ebitda_ttm"] <= 0:
         flag("ebitda_ttm", "Suspicious", "EBITDA is zero or negative: EV/EBITDA will be meaningless")
     if v["net_income_ttm"] < 0:
-        flag("net_income_ttm", "Note", "Loss-making: P/E will be excluded. Common under TMS 29 "
-             "(monetary losses), check the annual report")
+        flag("net_income_ttm", "Note", "Loss-making: P/E will be excluded")
     if v["total_equity"] <= 0:
         flag("total_equity", "Suspicious", "Equity is zero or negative: P/B will be meaningless")
     if v["price"] < v["low_52w"] or v["price"] > v["high_52w"]:
@@ -394,13 +396,13 @@ def quality_checks(ticker: str, values: dict, sources: dict, meta: dict,
                      "source": "missing", "status": "Missing",
                      "comment": "No annual statements from Yahoo"})
     else:
-        last_year = int(history.index.max())
-        months_old = (today - datetime(last_year, 12, 31)).days / 30.44
+        last_end = history.index.max()
+        months_old = (today - last_end).days / 30.44
+        label = f"Latest annual statement ends {last_end:%Y-%m-%d}"
         if months_old > config.STALE_STATEMENT_MONTHS:
-            status, comment = "Suspicious", (f"Latest annual statement is FY{last_year} "
-                                             f"({months_old:.0f} months old)")
+            status, comment = "Suspicious", f"{label} ({months_old:.0f} months old)"
         else:
-            status, comment = "OK", f"Latest annual statement is FY{last_year}"
+            status, comment = "OK", label
         rows.append({"ticker": ticker, "field": "annual_statements", "value": np.nan,
                      "source": "auto", "status": status, "comment": comment})
 
@@ -414,24 +416,7 @@ def quality_checks(ticker: str, values: dict, sources: dict, meta: dict,
 
 
 # ---------------------------------------------------------------------------
-# 7) Currency conversion
-# ---------------------------------------------------------------------------
-
-def to_usd(values: dict, usdtry: float) -> dict:
-    """Convert money fields from TRY to USD. Share counts are left unchanged."""
-    return {k: (v / usdtry if k in MONEY_FIELDS else v) for k, v in values.items()}
-
-
-def history_to_usd(history: pd.DataFrame, yearly_average: dict) -> pd.DataFrame:
-    """Convert annual TRY figures to USD using that year's average USD/TRY rate.
-    (A flow like revenue happens through the year, so the yearly average fits
-    better than the year-end rate.) Years without a rate become NaN."""
-    rates = pd.Series({int(y): r for y, r in yearly_average.items()})
-    return history.div(rates.reindex(history.index), axis=0)
-
-
-# ---------------------------------------------------------------------------
-# 8) Putting it together
+# 7) Putting it together
 # ---------------------------------------------------------------------------
 
 def load_company(ticker: str, overrides: pd.DataFrame, refresh: bool = False) -> dict:
@@ -448,12 +433,11 @@ def load_company(ticker: str, overrides: pd.DataFrame, refresh: bool = False) ->
 
 
 def load_all(tickers=None, refresh: bool = False) -> dict:
-    """Load every company plus the FX rates. This is what the app will call."""
+    """Load every company plus the risk-free rate. This is what the app will call."""
     tickers = tickers or config.ALL_TICKERS
     overrides = load_overrides()
     companies = {t: load_company(t, overrides, refresh) for t in tickers}
-    fx = get_fx(refresh)
-    return {"companies": companies, "fx": fx}
+    return {"companies": companies, "risk_free": get_risk_free_rate(refresh)}
 
 
 def snapshot_table(companies: dict) -> pd.DataFrame:
@@ -482,25 +466,23 @@ def fmt_number(x, field: str = "") -> str:
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Download and check BIST retail data")
+    parser = argparse.ArgumentParser(description="Download and check US retail data")
     parser.add_argument("--refresh", action="store_true", help="ignore cache, download again")
-    parser.add_argument("--usd", action="store_true", help="show values in USD")
     args = parser.parse_args()
 
     data = load_all(refresh=args.refresh)
-    companies, fx = data["companies"], data["fx"]
-    ccy = "USD" if args.usd else config.BASE_CURRENCY
+    companies, rf = data["companies"], data["risk_free"]
 
-    print(f"\nUSD/TRY spot: {fx['spot']:.4f} ({fx['spot_date']})")
-    print(f"\n=== Snapshot ({ccy}) - source in brackets: a=auto, m=manual, d=derived ===")
+    print(f"\n10-year US Treasury yield (risk-free rate): {rf['rate']:.2%} ({rf['date']})")
+    print(f"\n=== Snapshot ({config.BASE_CURRENCY}) - source in brackets: a=auto, m=manual, d=derived ===")
     table = {}
     for t, c in companies.items():
-        vals = to_usd(c["values"], fx["spot"]) if args.usd else c["values"]
-        table[t] = {f: f"{fmt_number(vals[f], f)} [{c['sources'][f][0]}]" for f in ALL_FIELDS}
+        table[t] = {f: f"{fmt_number(c['values'][f], f)} [{c['sources'][f][0]}]" for f in ALL_FIELDS}
     print(pd.DataFrame(table).to_string())
 
     print(f"\n=== Annual history: {config.TARGET} ({config.BASE_CURRENCY}) ===")
-    hist = companies[config.TARGET]["history"]
+    hist = companies[config.TARGET]["history"].copy()
+    hist.index = hist.index.strftime("FY end %Y-%m")
     print(hist.T.apply(lambda col: col.map(fmt_number)).to_string())
 
     print("\n=== Data quality issues (fields marked OK are hidden) ===")

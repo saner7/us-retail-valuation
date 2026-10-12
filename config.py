@@ -3,21 +3,25 @@
 from pathlib import Path
 
 # --- Companies -------------------------------------------------------------
-# BIST tickers on Yahoo Finance end with ".IS"
-TARGET = "MGROS.IS"
-PEERS = ["BIMAS.IS", "SOKM.IS", "CRFSA.IS"]
+TARGET = "TGT"
+PEERS = ["WMT", "COST", "KR", "DG", "BJ"]
 ALL_TICKERS = [TARGET] + PEERS
 
 COMPANY_NAMES = {
-    "MGROS.IS": "Migros",
-    "BIMAS.IS": "BIM",
-    "SOKM.IS": "SOK Marketler",
-    "CRFSA.IS": "CarrefourSA",
+    "TGT": "Target",
+    "WMT": "Walmart",
+    "COST": "Costco",
+    "KR": "Kroger",
+    "DG": "Dollar General",
+    "BJ": "BJ's Wholesale Club",
 }
 
 # --- Currency --------------------------------------------------------------
-BASE_CURRENCY = "TRY"     # all raw data is stored in TRY
-FX_TICKER = "TRY=X"       # Yahoo quote: how many TRY one USD buys
+BASE_CURRENCY = "USD"     # all companies report in USD; no conversion needed
+
+# --- WACC defaults (used in Stage 3, all editable in the app) ---------------
+RISK_FREE_TICKER = "^TNX"         # 10-year US Treasury yield, downloaded live
+COUNTRY_RISK_PREMIUM = 0.0        # extra premium for country risk; 0 for the US
 
 # --- Files -----------------------------------------------------------------
 PROJECT_DIR = Path(__file__).parent

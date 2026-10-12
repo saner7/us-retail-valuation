@@ -36,8 +36,10 @@ def build(snapshot, overrides=None):
     return dl.compute_derived(values, sources)
 
 
-def sample_history(last_year=2025):
-    return pd.DataFrame({"revenue": [1.0, 2.0]}, index=[last_year - 1, last_year])
+def sample_history(last_end="2026-01-31"):
+    """Two fiscal years; the index is the fiscal year end date (like Target's late-January year end)."""
+    last = pd.Timestamp(last_end)
+    return pd.DataFrame({"revenue": [1.0, 2.0]}, index=[last - pd.DateOffset(years=1), last])
 
 
 def test_net_debt_ev_and_equity():
@@ -78,7 +80,7 @@ def test_missing_input_gives_nan_not_a_guess():
 
 def run_checks(snapshot, history=None, meta=None):
     values, sources = build(snapshot)
-    meta = meta or {"financial_currency": "TRY", "yahoo_enterprise_value": 1200.0}
+    meta = meta or {"financial_currency": "USD", "yahoo_enterprise_value": 1200.0}
     history = sample_history() if history is None else history
     q = dl.quality_checks("TEST.IS", values, sources, meta, history, today=datetime(2026, 6, 30))
     return q.set_index("field")["status"]
@@ -108,32 +110,19 @@ def test_negative_equity_and_price_outside_range():
 
 
 def test_ev_mismatch_and_wrong_currency():
-    status = run_checks(sample_snapshot(), meta={"financial_currency": "USD",
+    status = run_checks(sample_snapshot(), meta={"financial_currency": "EUR",
                                                  "yahoo_enterprise_value": 1500.0})  # ours is 1200 -> -20%
     assert status["enterprise_value"] == "Suspicious"
     assert status["financial_currency"] == "Suspicious"
 
 
-def test_stale_statements():
-    # FY2024 ends 2024-12-31; on 2026-06-30 that is 18 months old (> 15)
-    assert run_checks(sample_snapshot(), history=sample_history(2024))["annual_statements"] == "Suspicious"
-    assert run_checks(sample_snapshot(), history=sample_history(2025))["annual_statements"] == "OK"
-
-
-def test_usd_conversion():
-    values, _ = build(sample_snapshot())
-    usd = dl.to_usd(values, usdtry=40.0)
-    assert usd["market_cap"] == 25.0               # 1000 / 40
-    assert usd["shares_outstanding"] == 100.0      # share count is not money
-
-
-def test_history_to_usd_uses_yearly_average():
-    hist = pd.DataFrame({"revenue": [300.0, 400.0]}, index=[2024, 2025])
-    usd = dl.history_to_usd(hist, {"2024": 30.0, "2025": 40.0})
-    assert usd.loc[2024, "revenue"] == 10.0
-    assert usd.loc[2025, "revenue"] == 10.0
-    no_rate = dl.history_to_usd(hist, {"2025": 40.0})
-    assert np.isnan(no_rate.loc[2024, "revenue"])
+def test_stale_statements_use_real_fiscal_year_end():
+    # "today" in run_checks is 2026-06-30.
+    # Year ended 2025-01-31 -> 17 months old (> 15) -> stale
+    assert run_checks(sample_snapshot(), history=sample_history("2025-01-31"))["annual_statements"] == "Suspicious"
+    # Year ended 2025-08-31 (Costco-style) -> 10 months old -> fine.
+    # (The old calendar-year logic would have treated this as FY2025 = Dec 2025.)
+    assert run_checks(sample_snapshot(), history=sample_history("2025-08-31"))["annual_statements"] == "OK"
 
 
 def quarterly(dates, ebitda):
