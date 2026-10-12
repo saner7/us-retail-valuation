@@ -19,6 +19,10 @@
     "financial_currency": "USD",
     "yahoo_enterprise_value": 42252582912,
     "beta": 0.226,
-    "data_source": "live"
+    "data_source": "live",
+    "name": "Dollar General Corporation",
+    "sector": "Consumer Defensive",
+    "industry": "Discount Stores",
+    "country": "United States"
   }
 }

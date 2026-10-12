@@ -19,7 +19,7 @@ import comps
 import config
 import dcf
 
-GROUPS = {"market": "Market", "comps": "Trading comps", "dcf": "DCF"}
+GROUPS = {"market": "Market", "comps": "Trading comps", "precedents": "Precedent transactions", "dcf": "DCF"}
 
 
 def dcf_range(run_kwargs: dict, method: str) -> dict:
@@ -43,13 +43,20 @@ def dcf_range(run_kwargs: dict, method: str) -> dict:
 
 
 def football_field_data(companies: dict, run_kwargs: dict, target: str = None,
-                        peers: list = None, row_order: list = None) -> pd.DataFrame:
+                        peers: list = None, row_order: list = None, scenario_runs: dict = None,
+                        precedent_row: dict = None) -> pd.DataFrame:
     """Rows in display order (top to bottom), as set in config.FOOTBALL_FIELD_ROWS.
     Columns: key, label, group, low, mid, high, basis (how the range was built,
-    for tooltips and the Excel export)."""
+    for tooltips and the Excel export), bear, bull (scenario values, DCF rows only,
+    from scenarios.run_scenarios(); the bar range itself is unchanged).
+    `precedent_row` (precedents.football_field_row) adds "Precedents: EV / EBITDA";
+    without it that row is left out."""
     target = target or config.TARGET
     peers = peers or config.PEERS
-    row_order = row_order or config.FOOTBALL_FIELD_ROWS
+    row_order = list(row_order or config.FOOTBALL_FIELD_ROWS)
+    # Banks and insurers are valued on book value, so their chart shows P/B (after P/E)
+    if _is_financial_meta(companies[target]["meta"]) and "pb" not in row_order:
+        row_order.insert(row_order.index("pe") + 1 if "pe" in row_order else len(row_order), "pb")
     v = companies[target]["values"]
     rows = {"52w": {"label": "52-week trading range", "group": GROUPS["market"],
                     "low": v["low_52w"], "mid": np.nan, "high": v["high_52w"],
@@ -62,9 +69,16 @@ def football_field_data(companies: dict, run_kwargs: dict, target: str = None,
                                    f"{r['multiple_median']:.1f}x / {r['multiple_high']:.1f}x"
                                    + (f" ({r['note']})" if r["note"] else "")}
 
+    if precedent_row:
+        rows["prec_ev_ebitda"] = dict(precedent_row)
     w = run_kwargs["wacc_rate"]
     dw = config.FF_WACC_DELTA
     g, m = run_kwargs["terminal_growth"], run_kwargs["exit_multiple"]
+    if pd.isna(w):     # no risk-free rate yet: no DCF rows (shown as N/A elsewhere)
+        row_order = [k for k in row_order if not k.startswith("dcf_")]
+    if pd.isna(w):
+        return pd.DataFrame([{"key": k, **rows[k]} for k in row_order if k in rows],
+                            columns=["key", "label", "group", "low", "mid", "high", "basis", "bear", "bull"])
     rows["dcf_exit"] = {"label": "DCF: Exit multiple", "group": GROUPS["dcf"],
                         **dcf_range(run_kwargs, "exit"),
                         "basis": f"WACC {w - dw:.1%}-{w + dw:.1%}, exit EV/EBITDA "
@@ -75,8 +89,12 @@ def football_field_data(companies: dict, run_kwargs: dict, target: str = None,
                           "basis": f"WACC {w - dw:.1%}-{w + dw:.1%}, terminal growth "
                                    f"{g - config.FF_GROWTH_DELTA:.1%}-{g + config.FF_GROWTH_DELTA:.1%}; "
                                    f"base case WACC {w:.1%}, g {g:.1%}"}
+    if scenario_runs:
+        for key, method in [("dcf_exit", "exit"), ("dcf_gordon", "gordon")]:
+            for s in ("bear", "bull"):
+                rows[key][s] = scenario_runs[s]["result"][method]["value_per_share"]
     out = pd.DataFrame([{"key": k, **rows[k]} for k in row_order if k in rows],
-                       columns=["key", "label", "group", "low", "mid", "high", "basis"])
+                       columns=["key", "label", "group", "low", "mid", "high", "basis", "bear", "bull"])
     return out
 
 
@@ -106,6 +124,7 @@ def default_choices(data: dict, target: str = None) -> dict:
     a, wi, kw = d["run_kwargs"]["assumptions"], d["wacc_inputs"], d["run_kwargs"]
     return {
         "growth_start": a["revenue_growth"][0],
+        "growth_end": a["revenue_growth"][-1],          # = terminal growth by default
         "terminal_growth": kw["terminal_growth"],
         "margin_start": a["ebitda_margin"][0] if isinstance(a["ebitda_margin"], list) else a["ebitda_margin"],
         "margin_end": a["ebitda_margin"][-1] if isinstance(a["ebitda_margin"], list) else a["ebitda_margin"],
@@ -122,10 +141,12 @@ def default_choices(data: dict, target: str = None) -> dict:
 
 def assumptions_from_choices(choices: dict, years: int = None) -> dict:
     """Year-by-year assumptions. Revenue growth runs in a straight line from
-    growth_start to the terminal growth rate, the EBITDA margin from margin_start
-    to margin_end; the rest are flat. A per-year table, if given, wins."""
+    growth_start to growth_end (default: the terminal growth rate), the EBITDA
+    margin from margin_start to margin_end; the rest are flat. A per-year
+    table, if given, wins."""
     years = years or config.PROJECTION_YEARS
-    a = {"revenue_growth": dcf.growth_path(choices["growth_start"], choices["terminal_growth"], years),
+    growth_end = choices.get("growth_end", choices["terminal_growth"])
+    a = {"revenue_growth": dcf.growth_path(choices["growth_start"], growth_end, years),
          "ebitda_margin": dcf.growth_path(choices["margin_start"], choices["margin_end"], years)}
     a.update({k: [float(choices[k])] * years for k in SCALAR_ASSUMPTIONS})
     for k, values in (choices.get("per_year") or {}).items():
@@ -163,3 +184,121 @@ def build_model(data: dict, choices: dict, target: str = None) -> dict:
     }
     return {"wacc_inputs": wacc_inputs, "wacc": w, "run_kwargs": run_kwargs,
             "credit_spread": choices["credit_spread"]}
+
+
+# ---------------------------------------------------------------------------
+# Company selection and warnings about the chosen group
+# ---------------------------------------------------------------------------
+
+def parse_tickers(target_text: str, peers_text: str, max_peers: int = None):
+    """Clean the user's input: upper case, no spaces, no duplicates, the target
+    not in its own peer group, at most `max_peers` peers.
+    Returns (target, peers, messages) - messages explain anything that was changed."""
+    max_peers = max_peers or config.MAX_PEERS
+    target = (target_text or "").strip().upper()
+    messages, peers = [], []
+    for raw in (peers_text or "").replace(";", ",").split(","):
+        t = raw.strip().upper()
+        if not t:
+            continue
+        if t == target:
+            messages.append(f"{t} is the target, so it was removed from the peer group.")
+        elif t in peers:
+            messages.append(f"{t} was listed twice.")
+        else:
+            peers.append(t)
+    if len(peers) > max_peers:
+        messages.append(f"Only the first {max_peers} peers are used ({', '.join(peers[max_peers:])} left out): "
+                        f"every company means several requests to Yahoo Finance, which blocks heavy use.")
+        peers = peers[:max_peers]
+    return target, peers, messages
+
+
+def company_name(data: dict, ticker: str) -> str:
+    c = data["companies"].get(ticker)
+    name = c["meta"].get("name") if c else None
+    return config.COMPANY_NAMES.get(ticker) or name or ticker
+
+
+def target_currency(data: dict, target: str) -> str:
+    return data["companies"][target]["meta"].get("currency") or "N/A"
+
+
+def _is_financial_meta(meta: dict) -> bool:
+    industry = meta.get("industry") or ""
+    return any(k.lower() in industry.lower() for k in config.FINANCIAL_INDUSTRY_KEYWORDS)
+
+
+def is_financial(data: dict, ticker: str) -> bool:
+    """Bank or insurer, judged from Yahoo's industry name."""
+    return _is_financial_meta(data["companies"][ticker]["meta"])
+
+
+def analysis_warnings(data: dict, target: str, peers: list) -> list:
+    """Everything the user should know about the chosen group, as
+    [{"level": "warning" | "info", "text": ...}], most important first.
+    (A target that failed to load is handled by the app, not here.)"""
+    out = []
+    companies = data["companies"]
+    for t in peers:
+        if t in data.get("errors", {}):
+            out.append({"level": "warning", "text": f"Left out of the peer group: {data['errors'][t]}"})
+    loaded_peers = [p for p in peers if p in companies]
+    if not loaded_peers:
+        out.append({"level": "warning", "text": "No peer could be loaded, so there are no trading multiples "
+                                                "and no default exit multiple."})
+    elif len(loaded_peers) < config.MIN_PEERS_FOR_QUARTILES:
+        out.append({"level": "info", "text": f"Only {len(loaded_peers)} peers: the comps ranges use min-max "
+                                             f"instead of the 25th-75th percentile."})
+
+    t_meta = companies[target]["meta"]
+    industry = t_meta.get("industry") or "unknown industry"
+    if is_financial(data, target):
+        out.append({"level": "warning", "text": (
+            f"{target} is a financial company ({industry}). For banks and insurers, debt is part of the "
+            f"business (deposits, policy reserves) and interest is an operating cost, so enterprise value, "
+            f"EV/EBITDA and a DCF of free cash flow to the firm are not meaningful. Use P/B, P/E or a "
+            f"dividend discount model instead; the results below are shown for reference only.")})
+
+    ccy = t_meta.get("currency")
+    group_ccy = {t: companies[t]["meta"].get("currency") for t in [target] + loaded_peers}
+    other = {t: c for t, c in group_ccy.items() if c != ccy}
+    if other:
+        listed = ", ".join(f"{t} ({c or 'unknown'})" for t, c in other.items())
+        out.append({"level": "info", "text": (
+            f"The group mixes currencies: {listed} vs {target} ({ccy}). Multiples are ratios measured within "
+            f"each company's own currency, so they can be compared across currencies. All absolute amounts "
+            f"(EV, equity value, share price) are shown in {target}'s trading currency, {ccy}.")})
+    t_fx = t_meta.get("fx")
+    if t_fx:
+        out.append({"level": "warning", "text": (
+            f"{target} reports in {t_fx['from']} but trades in {t_fx['to']}. Its cash flows are earned in "
+            f"{t_fx['from']}, so the DCF should be discounted with a {t_fx['from']} risk-free rate; here they are "
+            f"converted to {t_fx['to']} at today's rate and discounted with the {t_fx['to']} rate, which mixes "
+            f"two currencies' interest rates and inflation. If the company is also listed in {t_fx['from']} "
+            f"(on its home exchange), analyse that ticker instead, e.g. RACE.MI instead of RACE for Ferrari.")})
+    for t in [target] + loaded_peers:
+        fx = companies[t]["meta"].get("fx")
+        if fx:
+            how = (f"converted at {fx['rate']:.4f} ({fx['date']})" if not pd.isna(fx["rate"])
+                   else "NOT converted: the exchange rate is unavailable, so its statement figures are N/A")
+            out.append({"level": "info", "text": f"{t} reports in {fx['from']} but trades in {fx['to']}: "
+                                                 f"statement figures {how}."})
+
+    rf = data["risk_free"]
+    if rf.get("data_source") == "manual":
+        out.append({"level": "warning", "text": (
+            f"Enter the risk-free rate in the sidebar: it is not available automatically for {ccy}. "
+            f"Use the {rf['guidance']}. The DCF shows N/A until it is entered.")})
+    elif rf.get("data_source") == "unavailable":
+        out.append({"level": "warning", "text": (
+            f"The risk-free rate could not be downloaded ({rf.get('error', '')}). Enter the "
+            f"{rf['guidance']} in the sidebar; the DCF shows N/A until then.")})
+
+    unchecked = [t for t in [target] + loaded_peers if t not in config.ONE_OFFS_REVIEWED]
+    if unchecked:
+        out.append({"level": "info", "text": (
+            f"One-off items were not checked for {', '.join(unchecked)}. Their TTM figures may include "
+            f"impairments, disposal gains or other non-recurring items that distort the multiples. "
+            f"Check recent filings and add adjustments to data/manual_overrides.csv.")})
+    return out

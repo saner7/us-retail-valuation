@@ -19,6 +19,10 @@
     "financial_currency": "USD",
     "yahoo_enterprise_value": 408488050688,
     "beta": 0.87,
-    "data_source": "live"
+    "data_source": "live",
+    "name": "Costco Wholesale Corporation",
+    "sector": "Consumer Defensive",
+    "industry": "Discount Stores",
+    "country": "United States"
   }
 }

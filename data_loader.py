@@ -86,6 +86,14 @@ def is_missing(x) -> bool:
     return x is None or (isinstance(x, float) and math.isnan(x))
 
 
+class TickerNotFound(Exception):
+    """Yahoo has no stock quote for this symbol (typo, delisted, or not a stock)."""
+
+
+class DataUnavailable(Exception):
+    """The download failed and there is no cached or saved copy to fall back on."""
+
+
 # ---------------------------------------------------------------------------
 # 1) Downloading
 # ---------------------------------------------------------------------------
@@ -94,6 +102,12 @@ def fetch_from_yahoo(ticker: str) -> dict:
     """Download one company's snapshot + annual statements. Needs internet."""
     tk = yf.Ticker(ticker)
     info = tk.info or {}
+    # An unknown symbol does not raise an error in yfinance: it returns empty fields
+    if info.get("quoteType") is None and not isinstance(info.get("marketCap"), (int, float)):
+        raise TickerNotFound(f"{ticker}: Yahoo Finance has no quote for this symbol. Check the spelling "
+                             f"and the exchange suffix (e.g. RACE.MI for Milan, MC.PA for Paris).")
+    if info.get("quoteType") not in (None, "EQUITY"):
+        raise TickerNotFound(f"{ticker}: this is a {info.get('quoteType')}, not a company's stock.")
 
     snapshot = {}
     for field, yf_key in SNAPSHOT_FIELDS.items():
@@ -111,6 +125,10 @@ def fetch_from_yahoo(ticker: str) -> dict:
         "financial_currency": info.get("financialCurrency"),  # currency of the reports
         "yahoo_enterprise_value": info.get("enterpriseValue"),  # kept only as a cross-check
         "beta": info.get("beta"),   # Yahoo: 5-year monthly beta vs the S&P 500, used in the WACC
+        "name": info.get("longName") or info.get("shortName"),
+        "sector": info.get("sector"),
+        "industry": info.get("industry"),
+        "country": info.get("country"),
     }
 
     statements = {}
@@ -121,15 +139,20 @@ def fetch_from_yahoo(ticker: str) -> dict:
     return {"snapshot": snapshot, "meta": meta, "statements": statements}
 
 
-def fetch_risk_free_from_yahoo() -> dict:
-    """Latest 10-year US Treasury yield. Yahoo quotes ^TNX in percent
+def fetch_latest_close(symbol: str) -> dict:
+    """Latest daily close of a Yahoo series (bond yield or exchange rate)."""
+    hist = yf.Ticker(symbol).history(period="1mo")["Close"].dropna()
+    if hist.empty:
+        raise ValueError(f"no recent prices for {symbol}")
+    return {"fetched_at": datetime.now().isoformat(timespec="seconds"),
+            "value": float(hist.iloc[-1]), "date": hist.index[-1].strftime("%Y-%m-%d")}
+
+
+def fetch_risk_free_from_yahoo(symbol: str = None) -> dict:
+    """Latest 10-year government bond yield. Yahoo quotes ^TNX in percent
     (e.g. 4.25 means 4.25%), so we divide by 100 to get a decimal."""
-    hist = yf.Ticker(config.RISK_FREE_TICKER).history(period="1mo")["Close"].dropna()
-    return {
-        "fetched_at": datetime.now().isoformat(timespec="seconds"),
-        "rate": float(hist.iloc[-1]) / 100,
-        "date": hist.index[-1].strftime("%Y-%m-%d"),
-    }
+    r = fetch_latest_close(symbol or config.RISK_FREE_TICKER)
+    return {"fetched_at": r["fetched_at"], "rate": r["value"] / 100, "date": r["date"]}
 
 
 # ---------------------------------------------------------------------------
@@ -191,6 +214,8 @@ def get_company_raw(ticker: str, refresh: bool = False) -> dict:
         data["meta"]["data_source"] = "live"
         save_company_cache(ticker, data)
         return data
+    except TickerNotFound:
+        raise
     except Exception as e:
         fallback = cached or load_company_cache(ticker, config.SNAPSHOT_DIR)
         if fallback:
@@ -198,12 +223,23 @@ def get_company_raw(ticker: str, refresh: bool = False) -> dict:
             fallback["meta"]["data_source"] = source
             warnings.warn(f"{ticker}: download failed ({e}); using {source} from {fallback['meta']['fetched_at']}")
             return fallback
-        raise
+        saved = snapshot_tickers()
+        raise DataUnavailable(
+            f"{ticker}: the download from Yahoo Finance failed ({str(e)[:120]}) and there is no saved copy "
+            f"of its data. Saved fallback data exists only for {', '.join(saved) or 'no company'}. "
+            f"Yahoo often blocks shared cloud servers for a while: try again later.") from e
 
 
-def get_risk_free_rate(refresh: bool = False) -> dict:
-    """10-year Treasury yield, cached like company data. Used later in the WACC."""
-    path = config.CACHE_DIR / "risk_free_rate.json"
+def snapshot_tickers() -> list:
+    """Tickers that have a committed fallback copy in config.SNAPSHOT_DIR."""
+    return sorted(p.name[: -len("_snapshot.json")] for p in config.SNAPSHOT_DIR.glob("*_snapshot.json"))
+
+
+def _cached_series(filename: str, fetch, refresh: bool = False) -> dict:
+    """Cache + fallback logic shared by the risk-free rate and exchange rates.
+    Order: fresh cache -> download -> old cache -> committed snapshot.
+    Raises if all of them fail."""
+    path = config.CACHE_DIR / filename
     cached = None
     if path.exists():
         with open(path) as f:
@@ -212,23 +248,56 @@ def get_risk_free_rate(refresh: bool = False) -> dict:
             cached.setdefault("data_source", "live")
             return cached
     try:
-        rf = fetch_risk_free_from_yahoo()
-        rf["data_source"] = "live"
+        result = fetch()
+        result["data_source"] = "live"
     except Exception as e:
         fallback, source = cached, "old cache"
-        snapshot_path = config.SNAPSHOT_DIR / "risk_free_rate.json"
+        snapshot_path = config.SNAPSHOT_DIR / filename
         if fallback is None and snapshot_path.exists():
             with open(snapshot_path) as f:
                 fallback, source = json.load(f), "snapshot"
         if fallback:
             fallback["data_source"] = source
-            warnings.warn(f"Risk-free rate download failed ({e}); using {source} from {fallback['fetched_at']}")
+            warnings.warn(f"{filename}: download failed ({e}); using {source} from {fallback['fetched_at']}")
             return fallback
         raise
     config.CACHE_DIR.mkdir(parents=True, exist_ok=True)
     with open(path, "w") as f:
-        json.dump(rf, f, indent=2)
-    return rf
+        json.dump(result, f, indent=2)
+    return result
+
+
+def get_risk_free_rate(currency: str = "USD", refresh: bool = False) -> dict:
+    """10-year government bond yield in `currency`, used in the WACC.
+
+    Yahoo only has it for USD (^TNX). For any other currency the rate is NaN
+    with data_source "manual": the user must enter it (never a guess).
+    If the USD download fails with no saved copy, data_source is "unavailable"."""
+    currency = currency or "USD"
+    symbol = config.RISK_FREE_TICKERS.get(currency)
+    base = {"currency": currency, "guidance": config.risk_free_guidance(currency)}
+    if symbol is None:
+        return {**base, "rate": np.nan, "date": None, "fetched_at": None, "data_source": "manual"}
+    filename = "risk_free_rate.json" if currency == "USD" else f"risk_free_rate_{currency}.json"
+    try:
+        r = _cached_series(filename, lambda: fetch_risk_free_from_yahoo(symbol), refresh)
+    except Exception as e:
+        return {**base, "rate": np.nan, "date": None, "fetched_at": None, "data_source": "unavailable",
+                "error": str(e)[:200]}
+    return {**base, **r}
+
+
+def get_fx_rate(from_ccy: str, to_ccy: str, refresh: bool = False) -> dict:
+    """Exchange rate: 1 unit of from_ccy in to_ccy (Yahoo "EURUSD=X").
+    rate is NaN if it cannot be downloaded and there is no saved copy."""
+    if from_ccy == to_ccy:
+        return {"rate": 1.0, "date": None, "data_source": "live"}
+    symbol = f"{from_ccy}{to_ccy}=X"
+    try:
+        r = _cached_series(f"fx_{from_ccy}{to_ccy}.json", lambda: fetch_latest_close(symbol), refresh)
+    except Exception as e:
+        return {"rate": np.nan, "date": None, "data_source": "unavailable", "error": str(e)[:200]}
+    return {"rate": r["value"], "date": r["date"], "data_source": r.get("data_source", "live")}
 
 
 # ---------------------------------------------------------------------------
@@ -482,11 +551,23 @@ def quality_checks(ticker: str, values: dict, sources: dict, meta: dict,
                      "source": sources[field], "status": status, "comment": comment})
 
     # Company-level checks
-    fin_ccy = meta.get("financial_currency")
-    if fin_ccy != config.BASE_CURRENCY:
-        rows.append({"ticker": ticker, "field": "financial_currency", "value": np.nan,
-                     "source": "auto", "status": "Suspicious",
-                     "comment": f"Reports are in {fin_ccy}, expected {config.BASE_CURRENCY}"})
+    trade_ccy, fin_ccy = meta.get("currency"), meta.get("financial_currency")
+    fx = meta.get("fx")
+    if not trade_ccy or not fin_ccy:
+        rows.append({"ticker": ticker, "field": "currency", "value": np.nan, "source": "missing",
+                     "status": "Missing", "comment": "Yahoo does not say which currency the price or "
+                                                     "the reports are in: figures may not be comparable"})
+    elif fx:
+        if is_missing(fx["rate"]):
+            status, comment = "Suspicious", (f"Reports are in {fin_ccy} but the share trades in {trade_ccy}, "
+                                             f"and the exchange rate could not be downloaded: statement "
+                                             f"figures are left out (N/A)")
+        else:
+            status, comment = "Note", (f"Reports are in {fin_ccy}, the share trades in {trade_ccy}: statement "
+                                       f"figures converted at {fx['rate']:.4f} {trade_ccy} per {fin_ccy} "
+                                       f"({fx['date']}, latest rate for all periods)")
+        rows.append({"ticker": ticker, "field": "currency", "value": fx["rate"], "source": "derived",
+                     "status": status, "comment": comment})
 
     if history.empty:
         rows.append({"ticker": ticker, "field": "annual_statements", "value": np.nan,
@@ -516,14 +597,50 @@ def quality_checks(ticker: str, values: dict, sources: dict, meta: dict,
 # 7) Putting it together
 # ---------------------------------------------------------------------------
 
+# Fields Yahoo gives in the REPORTING currency (checked on RACE vs RACE.MI: Ferrari
+# trades in USD in New York and EUR in Milan, but debt, cash, revenue, EBITDA and the
+# statements are identical in both, i.e. in EUR). Price, market cap and 52-week
+# range are in the trading currency.
+REPORTING_CURRENCY_FIELDS = ["total_debt", "cash", "revenue_ttm", "ebitda_ttm", "net_income_ttm",
+                             "lease_liabilities"]
+
+
+def convert_to_trading_currency(snapshot: dict, history: pd.DataFrame, statements: dict, meta: dict,
+                                fx_rate: float):
+    """Put statement figures into the currency the share trades in, so EV and
+    the multiples compare like with like. Book value per share is rebuilt from
+    the balance sheet (Yahoo's own converted figure uses an outdated rate).
+    With a missing rate the converted fields become NaN: no guessing."""
+    snapshot, history = dict(snapshot), history.copy()
+    for field in REPORTING_CURRENCY_FIELDS:
+        if not is_missing(snapshot.get(field)):
+            snapshot[field] = snapshot[field] * fx_rate
+    balance_q = statements.get("balance_q", pd.DataFrame())
+    shares = snapshot.get("shares_outstanding")
+    if not balance_q.empty and "Stockholders Equity" in balance_q.index and not is_missing(shares) and shares:
+        equity = balance_q.loc["Stockholders Equity"].dropna()
+        if not equity.empty:
+            snapshot["book_value_per_share"] = float(equity[max(equity.index)]) / shares * fx_rate
+    history = history * fx_rate        # every history column is an amount of money
+    return snapshot, history
+
+
 def load_company(ticker: str, overrides: pd.DataFrame, refresh: bool = False) -> dict:
     raw = get_company_raw(ticker, refresh)
     snapshot, ttm_notes = replace_ttm(raw["snapshot"], raw["statements"]["income_q"])
     snapshot["lease_liabilities"], lease_date = lease_liabilities(raw["statements"]["balance_q"])
     raw["meta"]["lease_date"] = lease_date.strftime("%Y-%m-%d") if lease_date is not None else None
+    history = annual_history(raw["statements"])
+    trade_ccy, fin_ccy = raw["meta"].get("currency"), raw["meta"].get("financial_currency")
+    raw["meta"].pop("fx", None)
+    if trade_ccy and fin_ccy and trade_ccy != fin_ccy:
+        fx = get_fx_rate(fin_ccy, trade_ccy, refresh)
+        raw["meta"]["fx"] = {"from": fin_ccy, "to": trade_ccy, "rate": fx["rate"], "date": fx["date"]}
+        snapshot, history = convert_to_trading_currency(snapshot, history, raw["statements"], raw["meta"],
+                                                        fx["rate"])
+    # Manual overrides are in the trading currency, so they come after the conversion
     values, sources = apply_overrides(snapshot, ticker, overrides)
     values, sources = compute_derived(values, sources)
-    history = annual_history(raw["statements"])
     # A manual value replaces the TTM calculation, so its note no longer applies
     ttm_notes = {f: n for f, n in ttm_notes.items() if sources[f] != "manual"}
     mine = overrides[overrides["ticker"] == ticker]
@@ -537,28 +654,48 @@ def load_company(ticker: str, overrides: pd.DataFrame, refresh: bool = False) ->
 
 
 def load_all(tickers=None, refresh: bool = False) -> dict:
-    """Load every company plus the risk-free rate. This is what the app will call."""
-    tickers = tickers or config.ALL_TICKERS
+    """Load every company plus the risk-free rate. This is what the app calls.
+
+    The first ticker is the target; the risk-free rate follows its trading
+    currency. A company that cannot be loaded does not stop the others: it is
+    left out and its error message is kept in data["errors"]."""
+    tickers = list(tickers or config.ALL_TICKERS)
     overrides = load_overrides()
-    companies = {t: load_company(t, overrides, refresh) for t in tickers}
-    return {"companies": companies, "risk_free": get_risk_free_rate(refresh)}
+    companies, errors = {}, {}
+    for t in tickers:
+        try:
+            companies[t] = load_company(t, overrides, refresh)
+        except Exception as e:
+            errors[t] = str(e)
+    target = tickers[0]
+    currency = companies[target]["meta"].get("currency") if target in companies else None
+    return {"companies": companies, "errors": errors, "target": target,
+            "risk_free": get_risk_free_rate(currency or "USD", refresh)}
 
 
 def data_sources(data: dict) -> dict:
-    """Where each piece of data came from: {name: "live" | "old cache" | "snapshot"}."""
+    """Where each piece of data came from: {name: "live" | "old cache" | "snapshot"}.
+    A risk-free rate the user must type in ("manual") is not listed."""
     out = {t: c["meta"].get("data_source", "live") for t, c in data["companies"].items()}
-    out["risk_free_rate"] = data["risk_free"].get("data_source", "live")
+    if data["risk_free"].get("data_source", "live") != "manual":
+        out["risk_free_rate"] = data["risk_free"].get("data_source", "live")
     return out
 
 
-def save_snapshot() -> None:
-    """Copy the current cache into config.SNAPSHOT_DIR (committed to git), so a
-    fresh deploy still opens if Yahoo blocks the download."""
+def save_snapshot(tickers=None) -> None:
+    """Copy the cached data of `tickers` (default set if omitted) and the US
+    risk-free rate into config.SNAPSHOT_DIR (committed to git), so a fresh
+    deploy still opens if Yahoo blocks the download."""
     import shutil
+    tickers = tickers or config.ALL_TICKERS
     config.SNAPSHOT_DIR.mkdir(parents=True, exist_ok=True)
-    for path in config.CACHE_DIR.glob("*"):
-        if path.suffix in (".json", ".csv"):
-            shutil.copy2(path, config.SNAPSHOT_DIR / path.name)
+    for t in tickers:
+        for path in _cache_paths(t).values():
+            if path.exists():
+                shutil.copy2(path, config.SNAPSHOT_DIR / path.name)
+    rf = config.CACHE_DIR / "risk_free_rate.json"
+    if rf.exists():
+        shutil.copy2(rf, config.SNAPSHOT_DIR / rf.name)
 
 
 def snapshot_table(companies: dict) -> pd.DataFrame:
@@ -587,7 +724,7 @@ def fmt_number(x, field: str = "") -> str:
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Download and check US retail data")
+    parser = argparse.ArgumentParser(description="Download and check the default company set")
     parser.add_argument("--refresh", action="store_true", help="ignore cache, download again")
     parser.add_argument("--save-snapshot", action="store_true",
                         help="copy the cache to data/snapshot/ (the committed fallback)")
@@ -600,15 +737,18 @@ def main():
         save_snapshot()
         print(f"Snapshot saved to {config.SNAPSHOT_DIR}")
     companies, rf = data["companies"], data["risk_free"]
+    for t, err in data["errors"].items():
+        print(f"ERROR {err}")
+    ccy = companies[config.TARGET]["meta"].get("currency") if config.TARGET in companies else "?"
 
-    print(f"\n10-year US Treasury yield (risk-free rate): {rf['rate']:.2%} ({rf['date']})")
-    print(f"\n=== Snapshot ({config.BASE_CURRENCY}) - source in brackets: a=auto, m=manual, d=derived ===")
+    print(f"\nRisk-free rate ({rf['guidance'].split(',')[0]}): {rf['rate']:.2%} ({rf['date']})")
+    print(f"\n=== Snapshot ({ccy}) - source in brackets: a=auto, m=manual, d=derived ===")
     table = {}
     for t, c in companies.items():
         table[t] = {f: f"{fmt_number(c['values'][f], f)} [{c['sources'][f][0]}]" for f in ALL_FIELDS}
     print(pd.DataFrame(table).to_string())
 
-    print(f"\n=== Annual history: {config.TARGET} ({config.BASE_CURRENCY}) ===")
+    print(f"\n=== Annual history: {config.TARGET} ({ccy}) ===")
     hist = companies[config.TARGET]["history"].copy()
     hist.index = hist.index.strftime("FY end %Y-%m")
     print(hist.T.apply(lambda col: col.map(fmt_number)).to_string())

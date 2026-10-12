@@ -19,6 +19,10 @@
     "financial_currency": "USD",
     "yahoo_enterprise_value": 83583148032,
     "beta": 0.981,
-    "data_source": "live"
+    "data_source": "live",
+    "name": "Target Corporation",
+    "sector": "Consumer Defensive",
+    "industry": "Discount Stores",
+    "country": "United States"
   }
 }

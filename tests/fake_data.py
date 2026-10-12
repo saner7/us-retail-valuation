@@ -13,7 +13,8 @@ QUARTERS = pd.to_datetime(["2026-07-31", "2026-04-30", "2026-01-31", "2025-10-31
 YEARS = pd.to_datetime(["2023-01-31", "2024-01-31", "2025-01-31", "2026-01-31"])
 
 
-def company(ticker: str, scale: float, ev_ebitda: float) -> dict:
+def company(ticker: str, scale: float, ev_ebitda: float, currency: str = "USD",
+            industry: str = "Discount Stores") -> dict:
     """Revenue 1,000 x scale; EBITDA margin 8%; market cap set so that
     EV / EBITDA is roughly `ev_ebitda`."""
     revenue, ebitda = 1000.0 * scale, 80.0 * scale
@@ -39,8 +40,10 @@ def company(ticker: str, scale: float, ev_ebitda: float) -> dict:
         "change_in_wc": [0.0] * 4,
     }, index=YEARS)
     history.index.name = "fiscal_year_end"
-    meta = {"ticker": ticker, "fetched_at": "2026-10-12T09:00:00", "currency": "USD",
-            "financial_currency": "USD", "yahoo_enterprise_value": market_cap + debt - cash, "beta": 1.0}
+    meta = {"ticker": ticker, "fetched_at": "2026-10-12T09:00:00", "currency": currency,
+            "financial_currency": currency, "yahoo_enterprise_value": market_cap + debt - cash, "beta": 1.0,
+            "name": f"{ticker} Inc.", "sector": "Consumer Defensive", "industry": industry,
+            "data_source": "live"}
     income_q = pd.DataFrame([[revenue / 4] * 4, [ebitda / 4] * 4, [7.5 * scale] * 4], columns=QUARTERS,
                             index=["Total Revenue", "EBITDA", "Net Income Common Stockholders"])
     quality = dl.quality_checks(ticker, values, sources, meta, history, today=datetime(2026, 10, 12))
@@ -48,9 +51,20 @@ def company(ticker: str, scale: float, ev_ebitda: float) -> dict:
             "statements": {"income_q": income_q}, "history": history, "quality": quality}
 
 
-def make_data() -> dict:
+def make_data(tickers=None, currencies=None, industries=None, risk_free=0.04) -> dict:
+    """Default: the configured target + peers, all in USD, risk-free rate 4%.
+    `currencies` / `industries` map ticker -> value for the ones that differ.
+    risk_free=None mimics a currency without an automatic rate (user must enter it)."""
+    tickers = tickers or config.ALL_TICKERS
+    currencies, industries = currencies or {}, industries or {}
     multiples = [10.0, 12.0, 8.0, 14.0, 6.0, 9.0]
-    companies = {t: company(t, 1.0 + i, multiples[i % len(multiples)])
-                 for i, t in enumerate(config.ALL_TICKERS)}
-    return {"companies": companies,
-            "risk_free": {"rate": 0.04, "date": "2026-10-09", "fetched_at": "2026-10-12T09:00:00"}}
+    companies = {t: company(t, 1.0 + i, multiples[i % len(multiples)], currencies.get(t, "USD"),
+                            industries.get(t, "Discount Stores"))
+                 for i, t in enumerate(tickers)}
+    ccy = companies[tickers[0]]["meta"]["currency"]
+    rf = {"currency": ccy, "guidance": config.risk_free_guidance(ccy)}
+    if risk_free is None:
+        rf.update(rate=float("nan"), date=None, fetched_at=None, data_source="manual")
+    else:
+        rf.update(rate=risk_free, date="2026-10-09", fetched_at="2026-10-12T09:00:00", data_source="live")
+    return {"companies": companies, "errors": {}, "target": tickers[0], "risk_free": rf}

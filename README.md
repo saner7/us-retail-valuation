@@ -1,24 +1,23 @@
-# US Retail Valuation: Comparable Companies + DCF
+# US Retail Valuation: Comps, Precedent Transactions + DCF
 
-<!-- ============================================================
-     FILL IN BEFORE SHARING: replace the two placeholders below.
-     ============================================================ -->
-**Live app:** _[APP LINK ](https://tgt-valuation.streamlit.app/)]_
+**Live app:** [tgt-valuation.streamlit.app](https://tgt-valuation.streamlit.app/)
 
-_Interactive valuation of Target (NYSE: TGT) using comparable companies and a DCF, with a football field summary and a linked Excel model. Built as a learning project by an IB Diploma student interested in investment banking.
+_Interactive valuation of Target (NYSE: TGT) using comparable companies, precedent transactions and a DCF with Bear / Base / Bull scenarios, with a football field summary and a linked Excel model. Built as a learning project by an IB Diploma student interested in investment banking._
 
 ---
 
 A valuation tool for **Target (TGT)**, benchmarked against **Walmart (WMT), Costco (COST),
 Kroger (KR), Dollar General (DG) and BJ's Wholesale Club (BJ)**.
-It combines a trading-comparables analysis with a discounted cash flow (DCF) model and
-summarises both in a "football field" chart, the way an investment banking pitch book would.
+It combines a trading-comparables analysis, precedent transactions (what acquirers paid for
+similar US retailers) and a discounted cash flow (DCF) model with Bear / Base / Bull scenarios,
+and summarises them in a "football field" chart, the way an investment banking pitch book would.
+Any other listed company can be analysed by typing its ticker and peers in the app.
 
 > Built as a learning project by an IB Diploma student interested in economics, finance and
 > investment banking.
 
 ![App screenshot](docs/screenshot.png)
-*Summary tab: football field, DCF results and the reverse DCF box (data downloaded 12 October 2026; share prices are the 9 October close).*
+*Summary tab: football field with comps, precedent transactions and DCF (Bear / Bull markers), DCF results and the reverse DCF box (data downloaded 12 October 2026; share prices are the 9 October close).*
 
 ## Status
 
@@ -28,11 +27,15 @@ summarises both in a "football field" chart, the way an investment banking pitch
 | 2 | Comparable companies (multiples, peer statistics, implied value) | Done |
 | 3 | DCF (FCFF projection, WACC, Gordon growth + exit multiple, sensitivity) | Done |
 | 4 | Streamlit app, football field chart, Excel export | Done |
+| A | Any company: ticker and peer selection, currencies, financial companies | Done |
+| B | Bear / Base / Bull scenarios and a probability-weighted value | Done |
+| C | Precedent transactions (EV/EBITDA) with SEC sources | Done |
 
 ## Methodology
 
 ### Data (Stage 1)
-- Source: Yahoo Finance via `yfinance`. All figures are in **USD**.
+- Source: Yahoo Finance via `yfinance`. All figures for the default set are in **USD**; other
+  companies are shown in their trading currency (see *Analysing other companies*).
 - **TTM (trailing twelve months)** revenue, EBITDA and net income are rebuilt by summing the
   last four quarterly reports, not taken from Yahoo's summary fields. Yahoo's ready-made
   number is kept as a cross-check, and differences above 10% are shown in the data quality report.
@@ -42,8 +45,8 @@ summarises both in a "football field" chart, the way an investment banking pitch
   Under US GAAP (ASC 842) store rent is an operating expense, so EBITDA is already after rent;
   counting lease liabilities as debt as well would count rent twice. Yahoo does not separate
   finance from operating leases, so small finance leases are excluded too.
-- **Risk-free rate**: the 10-year US Treasury yield (`^TNX`), downloaded live. The country
-  risk premium defaults to 0 for the US.
+- **Risk-free rate**: the 10-year US Treasury yield (`^TNX`), downloaded live for USD; for other
+  currencies it is entered by hand. The country risk premium defaults to 0 for the US.
 - **Manual overrides**: any value can be replaced in `data/manual_overrides.csv`
   (with a source note). Every value is tagged as `auto`, `manual`, `derived` or `missing`.
   TTM values adjusted for a one-off record the quarter that contains the one-off and the
@@ -101,22 +104,88 @@ summarises both in a "football field" chart, the way an investment banking pitch
 - A warning is shown when the terminal value is more than 75% of enterprise value.
 
 ### App, football field and Excel export (Stage 4)
-- **Streamlit app** (`app.py`) with four tabs: Summary, DCF, Comps, Data & quality. Every DCF and
+- **Streamlit app** (`app.py`) with six tabs: Summary, DCF, Scenarios, Comps, Precedent
+  Transactions, Data & quality. Every DCF and
   WACC assumption is in the sidebar, with its default and the history it comes from in the help
   text. Revenue growth and the EBITDA margin are set by a start (Year 1) and an end (Year 5)
   value; an optional year-by-year table overrides individual years.
 - **Football field**, top to bottom: 52-week trading range, comps EV/EBITDA, P/E and EV/Sales
-  (peer 25th-75th percentile, tick at the median), DCF exit multiple and DCF Gordon growth
-  (WACC ±0.5% x exit multiple ±1x or terminal growth ±0.5%, tick at the base case), with the
+  (peer 25th-75th percentile, tick at the median), precedent transactions EV/EBITDA (when they
+  apply, see Stage C), DCF exit multiple and DCF Gordon growth (WACC ±0.5% x exit multiple ±1x or
+  terminal growth ±0.5%, tick at the base case, triangles at the Bear and Bull values), with the
   current price as a dashed vertical line. **P/B is left out** of the chart (it stays in the
   comps tables with a note): a retailer's value comes from its cash flows, not from the
   assets on its balance sheet, and share buybacks shrink book equity and inflate P/B.
 - **Reverse DCF box**: the WACC, terminal growth and exit multiple implied by today's price.
 - **Excel export** (`export.py`, also the download button in the app). The **DCF and WACC
-  sheets are live formulas**: inputs are blue on yellow, and changing one updates the value
-  per share. The other sheets (Summary, Sensitivity, Comps, Bridge, Market data, Data quality,
-  History) hold values from the moment of export. A test recalculates the workbook with
+  and Scenarios sheets are live formulas**: inputs are blue on yellow, and changing one updates
+  the value per share. The other sheets (Summary, Sensitivity, Comps, Bridge, Precedents, Market
+  data, Data quality, History) hold values from the moment of export. A test recalculates the workbook with
   LibreOffice and checks that Excel and Python agree to 9 significant digits.
+
+### Scenarios (Stage B)
+- **Bear / Base / Bull**, each with its own revenue growth path (Year 1 -> Year 5), EBITDA margin
+  path, capex, terminal growth and exit multiple. Base is the sidebar input. The WACC, D&A,
+  working capital and tax are shared: scenarios describe performance, the WACC describes risk.
+- **Default Bear / Bull** (all editable): halfway from Base to the most extreme year in the
+  company's own history (growth, Year 5 margin, capex), terminal growth -/+ 0.5 points, and an
+  exit multiple halfway between the peer median and the peer low / high. Moving all the way to
+  the historical extremes stacks every worst (best) year at once: for Target it gave a negative
+  Bear equity value. The Bull exit multiple is capped at 1.35x the target's own EV/EBITDA,
+  because assuming it trades like the group's most premium members (Walmart, Costco) within
+  five years is too optimistic.
+- **Probability-weighted value** (default 25% / 50% / 25%): N/A unless the weights add up to 100%.
+- Excel: a switch cell on the DCF sheet (1 = Bear, 2 = Base, 3 = Bull) drives the DCF through
+  `INDEX`, and a Scenarios sheet values all three side by side with live formulas.
+
+### Precedent transactions (Stage C)
+What acquirers actually paid for comparable US retailers (`data/precedents.csv`). Every figure is
+traced to an SEC filing: the deal press release (8-K Ex.99.1), the merger proxy or tender offer
+statement (DEFM14A / DEFM14C / SC 14D-9) and the precedent-transaction tables in fairness opinions.
+The `source_url` and `notes` columns name the document and section for each number; empty means
+it was not found in a primary source.
+
+| Announced | Target / Acquirer | Status | Tier | EV ($m) | EV / LTM EBITDA |
+|---|---|---|---|---|---|
+| 2016-03-14 | The Fresh Market / Apollo funds | completed 2016-04-27 | core | 1,360 | 7.1x |
+| 2017-06-16 | Whole Foods Market / Amazon | completed 2017-08-28 | core | 13,700 | 10.6x |
+| 2019-04-16 | Smart & Final / Apollo funds | completed 2019-06-20 | core | 1,120 | 6.5x |
+| 2024-12-23 | Nordstrom / Nordstrom family and Liverpool | completed 2025-05-20 | core | 6,250 | 5.7x |
+| 2017-06-28 | Staples / Sycamore Partners | completed 2017-09-12 | second tier | 6,600 | 5.0x |
+| 2021-05-06 | At Home / Hellman & Friedman | completed 2021-07-23 | second tier | 2,830 | 7.9x |
+| 2022-10-14 | Albertsons / Kroger | terminated 2024-12-10 | core | 24,600 | 5.4x |
+
+- **Default calculation**: the four completed core deals (second-tier and terminated deals can be
+  switched on in the app). The range uses the comps rule: 25th-75th percentile of the deals'
+  EV/EBITDA with four or more deals, min-max with fewer, median as mid; then the same bridge to
+  value per share. For the default four deals (5.7x, 6.5x, 7.1x, 10.6x) that is 6.3x / 6.8x /
+  8.0x, or $92 / $101 / $122 per Target share. With fewer than five deals the app warns that the
+  sample is small.
+- **Only EV/EBITDA** is used: it is the standard yardstick in acquisitions, and EV/Sales would
+  compare businesses with very different margins. LTM revenue was not in the proxies either.
+- **Premiums are shown for information only**: they are measured against different reference
+  prices (a single close, 10- to 30-day averages, or a price months before the announcement).
+- Considered but left out: deals before 2016, sales in bankruptcy, loss-making e-commerce
+  targets, unsigned approaches, private targets without disclosed figures, distributors and
+  non-US deals; Family Dollar (distressed carve-out), Walgreens (loss-making, international),
+  Michaels and Foot Locker (business models too far from Target).
+- **Commentary.** Precedent values are usually expected above the comps, because buyers pay a
+  control premium. Not here: the precedent multiples (median about 6.8x) sit below Target's own
+  EV/EBITDA (9.7x) and the comps median (11.3x). Most deals involve smaller grocery chains, where
+  margins are typically thin, or companies under pressure; half of them were leveraged buyouts by
+  private equity funds, which can only pay what the debt and their return targets allow; and they
+  come from different market periods. Amazon's purchase of Whole Foods, the only deal by an
+  outside operating company seeking synergies, has the highest multiple (10.6x).
+- **Two independent methods, one answer.** The precedent median (about $101 per share) and the
+  Gordon growth DCF (about $101) arrive at a similar value by different routes: one from what
+  acquirers paid, the other from Target's own cash flows. The trading comps (EV/EBITDA median
+  about $182) and the DCF exit multiple (about $167) point higher, because both rest on today's
+  peer multiples, which Walmart and Costco pull up. The match should not be over-read: the deals
+  come from different periods (2016-2024) and mostly involve different kinds of companies
+  (smaller grocers, retailers under pressure, leveraged buyouts).
+- The precedent row appears only when the target's sub-sector (from Yahoo's country and industry)
+  matches the deals in the calculation, or for Target, for whom the list was selected. Other
+  companies can upload their own CSV in the app (template provided; used for that session only).
 
 ### Data quality checks
 Missing fields, zero or negative EBITDA, losses (P/E excluded), negative equity, price outside
@@ -217,6 +286,20 @@ EBITDAR, i.e. before rent) is also consistent, but Yahoo does not report rent fo
   for all 5 years by default. Per-year inputs are supported.
 - Manual overrides are fixed numbers. They are checked for staleness but must be updated by hand.
 - The equity risk premium, credit spread and terminal growth are judgement calls, not data.
+- A company that reports in one currency but trades in another (e.g. Ferrari on the NYSE, `RACE`,
+  reports in EUR and trades in USD) has its statement figures converted at today's exchange rate,
+  and its DCF is then discounted with the trading currency's risk-free rate. Its cash flows are
+  really earned in the reporting currency, so this mixes two currencies' interest rates and
+  inflation: on 12 Oct 2026 `RACE` gave a Gordon value of $155 against EUR 200 for `RACE.MI`
+  (US 10-year yield 5.24% vs Bund 3.53%). The app warns about this; analyse the home listing
+  (`RACE.MI`) when there is one.
+- **Scenarios**: Bear and Bull are built from the company's own history and the peer range, not
+  from forecasts; the weights (25/50/25) are a judgement call, and the WACC is the same in all three.
+- **Precedent transactions**: only four core deals, from 2016 to 2024 and from different market
+  and interest rate conditions. LTM EBITDA comes from different advisors' fairness opinion
+  tables, some on an adjusted basis, and advisors do not always agree (Staples: 5.0x at Morgan
+  Stanley, 6.0x at Goldman Sachs). Whether the deals apply is
+  decided from Yahoo's industry label, which is coarse (Target is "Discount Stores").
 
 ## Project structure
 ```
@@ -225,10 +308,13 @@ data_loader.py         download, cache, overrides, data quality report
 comps.py               trading multiples, peer statistics, implied value bridge
 dcf.py                 projection, FCFF, WACC, terminal value, sensitivity tables
 summary.py             football field data, reverse DCF, app inputs -> model
-charts.py              Plotly charts (football field, sensitivity heatmap)
-export.py              Excel export (DCF and WACC as live formulas)
+charts.py              Plotly charts (football field, sensitivity heatmap, scenarios)
+scenarios.py           Bear / Base / Bull scenarios and the probability-weighted value
+precedents.py          precedent transactions: loading, filters, EV/EBITDA range
+export.py              Excel export (DCF, WACC and Scenarios as live formulas)
 app.py                 Streamlit app
 data/manual_overrides.csv
+data/precedents.csv    precedent transactions with SEC sources
 data/cache/            downloaded data (not in git)
 data/snapshot/         saved copy of the data, used only if the live download fails
 .streamlit/config.toml app theme and settings (also used by Streamlit Community Cloud)
@@ -268,7 +354,20 @@ variable rather than in the code (the SEC rejects requests without one):
   opens with the saved data in `data/snapshot/` and shows a warning saying so. Refresh the
   snapshot from time to time with `python data_loader.py --refresh --save-snapshot` and push it.
 
-## Changing the companies
-Edit `TARGET`, `PEERS` and `COMPANY_NAMES` in `config.py`.
+## Analysing other companies
+Type any Yahoo Finance ticker and a comma-separated peer group (up to 10) in the app's sidebar;
+the default set is in `config.py`. Things to know:
+- Outside the US use the exchange suffix (e.g. `RACE.MI` Milan, `MC.PA` Paris, `CFR.SW` Zurich).
+- Amounts are shown in the target's trading currency. Companies that report in a different
+  currency than they trade in (e.g. Ferrari on the NYSE) are converted at the latest exchange rate.
+- The risk-free rate is downloaded only for USD; for other currencies the app asks you to enter
+  the 10-year government bond yield (for the euro: the German Bund).
+- One-off items were checked only for the default set; banks and insurers get a warning, as
+  EV/EBITDA and an FCFF DCF do not fit them, and their football field adds P/B (book value is
+  how financial companies are usually valued). Yahoo's saved fallback data exists only for the
+  default set.
+- Example tested: Ferrari (`RACE.MI`) against luxury peers (LVMH, Hermès, Moncler, Richemont)
+  rather than carmakers, because the market prices Ferrari as a luxury brand for its business
+  model (scarcity, pricing power, margins), not as a car manufacturer.
 
 *Disclaimer: for educational purposes only, not investment advice.*

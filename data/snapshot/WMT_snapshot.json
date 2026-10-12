@@ -19,6 +19,10 @@
     "financial_currency": "USD",
     "yahoo_enterprise_value": 953546637312,
     "beta": 0.578,
-    "data_source": "live"
+    "data_source": "live",
+    "name": "Walmart Inc.",
+    "sector": "Consumer Defensive",
+    "industry": "Discount Stores",
+    "country": "United States"
   }
 }
