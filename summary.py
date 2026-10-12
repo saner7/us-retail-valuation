@@ -65,6 +65,11 @@ def football_field_data(companies: dict, run_kwargs: dict, target: str = None,
     w = run_kwargs["wacc_rate"]
     dw = config.FF_WACC_DELTA
     g, m = run_kwargs["terminal_growth"], run_kwargs["exit_multiple"]
+    if pd.isna(w):     # no risk-free rate yet: no DCF rows (shown as N/A elsewhere)
+        row_order = [k for k in row_order if not k.startswith("dcf_")]
+    if pd.isna(w):
+        return pd.DataFrame([{"key": k, **rows[k]} for k in row_order if k in rows],
+                            columns=["key", "label", "group", "low", "mid", "high", "basis"])
     rows["dcf_exit"] = {"label": "DCF: Exit multiple", "group": GROUPS["dcf"],
                         **dcf_range(run_kwargs, "exit"),
                         "basis": f"WACC {w - dw:.1%}-{w + dw:.1%}, exit EV/EBITDA "
@@ -163,3 +168,108 @@ def build_model(data: dict, choices: dict, target: str = None) -> dict:
     }
     return {"wacc_inputs": wacc_inputs, "wacc": w, "run_kwargs": run_kwargs,
             "credit_spread": choices["credit_spread"]}
+
+
+# ---------------------------------------------------------------------------
+# Company selection and warnings about the chosen group
+# ---------------------------------------------------------------------------
+
+def parse_tickers(target_text: str, peers_text: str, max_peers: int = None):
+    """Clean the user's input: upper case, no spaces, no duplicates, the target
+    not in its own peer group, at most `max_peers` peers.
+    Returns (target, peers, messages) - messages explain anything that was changed."""
+    max_peers = max_peers or config.MAX_PEERS
+    target = (target_text or "").strip().upper()
+    messages, peers = [], []
+    for raw in (peers_text or "").replace(";", ",").split(","):
+        t = raw.strip().upper()
+        if not t:
+            continue
+        if t == target:
+            messages.append(f"{t} is the target, so it was removed from the peer group.")
+        elif t in peers:
+            messages.append(f"{t} was listed twice.")
+        else:
+            peers.append(t)
+    if len(peers) > max_peers:
+        messages.append(f"Only the first {max_peers} peers are used ({', '.join(peers[max_peers:])} left out): "
+                        f"every company means several requests to Yahoo Finance, which blocks heavy use.")
+        peers = peers[:max_peers]
+    return target, peers, messages
+
+
+def company_name(data: dict, ticker: str) -> str:
+    c = data["companies"].get(ticker)
+    name = c["meta"].get("name") if c else None
+    return config.COMPANY_NAMES.get(ticker) or name or ticker
+
+
+def target_currency(data: dict, target: str) -> str:
+    return data["companies"][target]["meta"].get("currency") or "N/A"
+
+
+def is_financial(data: dict, ticker: str) -> bool:
+    industry = data["companies"][ticker]["meta"].get("industry") or ""
+    return any(k.lower() in industry.lower() for k in config.FINANCIAL_INDUSTRY_KEYWORDS)
+
+
+def analysis_warnings(data: dict, target: str, peers: list) -> list:
+    """Everything the user should know about the chosen group, as
+    [{"level": "warning" | "info", "text": ...}], most important first.
+    (A target that failed to load is handled by the app, not here.)"""
+    out = []
+    companies = data["companies"]
+    for t in peers:
+        if t in data.get("errors", {}):
+            out.append({"level": "warning", "text": f"Left out of the peer group: {data['errors'][t]}"})
+    loaded_peers = [p for p in peers if p in companies]
+    if not loaded_peers:
+        out.append({"level": "warning", "text": "No peer could be loaded, so there are no trading multiples "
+                                                "and no default exit multiple."})
+    elif len(loaded_peers) < config.MIN_PEERS_FOR_QUARTILES:
+        out.append({"level": "info", "text": f"Only {len(loaded_peers)} peers: the comps ranges use min-max "
+                                             f"instead of the 25th-75th percentile."})
+
+    t_meta = companies[target]["meta"]
+    industry = t_meta.get("industry") or "unknown industry"
+    if is_financial(data, target):
+        out.append({"level": "warning", "text": (
+            f"{target} is a financial company ({industry}). For banks and insurers, debt is part of the "
+            f"business (deposits, policy reserves) and interest is an operating cost, so enterprise value, "
+            f"EV/EBITDA and a DCF of free cash flow to the firm are not meaningful. Use P/B, P/E or a "
+            f"dividend discount model instead; the results below are shown for reference only.")})
+
+    ccy = t_meta.get("currency")
+    group_ccy = {t: companies[t]["meta"].get("currency") for t in [target] + loaded_peers}
+    other = {t: c for t, c in group_ccy.items() if c != ccy}
+    if other:
+        listed = ", ".join(f"{t} ({c or 'unknown'})" for t, c in other.items())
+        out.append({"level": "info", "text": (
+            f"The group mixes currencies: {listed} vs {target} ({ccy}). Multiples are ratios measured within "
+            f"each company's own currency, so they can be compared across currencies. All absolute amounts "
+            f"(EV, equity value, share price) are shown in {target}'s trading currency, {ccy}.")})
+    for t in [target] + loaded_peers:
+        fx = companies[t]["meta"].get("fx")
+        if fx:
+            how = (f"converted at {fx['rate']:.4f} ({fx['date']})" if not pd.isna(fx["rate"])
+                   else "NOT converted: the exchange rate is unavailable, so its statement figures are N/A")
+            out.append({"level": "info", "text": f"{t} reports in {fx['from']} but trades in {fx['to']}: "
+                                                 f"statement figures {how}."})
+
+    rf = data["risk_free"]
+    if rf.get("data_source") == "manual":
+        out.append({"level": "warning", "text": (
+            f"Enter the risk-free rate in the sidebar: it is not available automatically for {ccy}. "
+            f"Use the {rf['guidance']}. The DCF shows N/A until it is entered.")})
+    elif rf.get("data_source") == "unavailable":
+        out.append({"level": "warning", "text": (
+            f"The risk-free rate could not be downloaded ({rf.get('error', '')}). Enter the "
+            f"{rf['guidance']} in the sidebar; the DCF shows N/A until then.")})
+
+    unchecked = [t for t in [target] + loaded_peers if t not in config.ONE_OFFS_REVIEWED]
+    if unchecked:
+        out.append({"level": "info", "text": (
+            f"One-off items were not checked for {', '.join(unchecked)}. Their TTM figures may include "
+            f"impairments, disposal gains or other non-recurring items that distort the multiples. "
+            f"Check recent filings and add adjustments to data/manual_overrides.csv.")})
+    return out

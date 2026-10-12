@@ -375,10 +375,12 @@ def implied_by_price(run_kwargs: dict, key: str, method: str, low: float, high: 
 # 7) Default inputs for the target, straight from the data
 # ---------------------------------------------------------------------------
 
-def default_inputs(data: dict, ticker: str = None) -> dict:
+def default_inputs(data: dict, ticker: str = None, peers: list = None) -> dict:
     """Everything run_dcf needs, with defaults taken from the data and config.
-    Also returns the WACC breakdown and where each default came from."""
+    Also returns the WACC breakdown and where each default came from.
+    `peers` (default: every loaded company except the target) set the exit multiple."""
     ticker = ticker or config.TARGET
+    peers = peers if peers is not None else [t for t in data["companies"] if t != ticker]
     c = data["companies"][ticker]
     v = c["values"]
     assumptions = default_assumptions(c["history"], revenue_ttm=v["revenue_ttm"], ebitda_ttm=v["ebitda_ttm"])
@@ -399,7 +401,7 @@ def default_inputs(data: dict, ticker: str = None) -> dict:
 
     # Exit multiple = peer median EV/EBITDA from the comps (target excluded)
     table, _ = comps.multiples_table(data["companies"])
-    exit_multiple = float(comps.peer_stats(table, config.PEERS).loc["median", "ev_ebitda"])
+    exit_multiple = float(comps.peer_stats(table, peers).loc["median", "ev_ebitda"])
 
     run_kwargs = {
         "base_revenue": v["revenue_ttm"],

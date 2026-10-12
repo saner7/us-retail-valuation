@@ -97,7 +97,7 @@ def test_missing_input_gives_nan_not_a_guess():
 
 def run_checks(snapshot, history=None, meta=None):
     values, sources = build(snapshot)
-    meta = meta or {"financial_currency": "USD", "yahoo_enterprise_value": 1200.0}  # incl. leases
+    meta = meta or {"currency": "USD", "financial_currency": "USD", "yahoo_enterprise_value": 1200.0}  # incl. leases
     history = sample_history() if history is None else history
     q = dl.quality_checks("TEST.IS", values, sources, meta, history, today=datetime(2026, 6, 30))
     return q.set_index("field")["status"]
@@ -126,11 +126,18 @@ def test_negative_equity_and_price_outside_range():
     assert status["price"] == "Suspicious"
 
 
-def test_ev_mismatch_and_wrong_currency():
-    status = run_checks(sample_snapshot(), meta={"financial_currency": "EUR",
+def test_ev_mismatch_and_unconvertible_currency():
+    # Reports in EUR, trades in USD, and no exchange rate could be downloaded
+    status = run_checks(sample_snapshot(), meta={"currency": "USD", "financial_currency": "EUR",
+                                                 "fx": {"from": "EUR", "to": "USD", "rate": np.nan, "date": None},
                                                  "yahoo_enterprise_value": 1500.0})  # ours is 1200 -> -20%
     assert status["enterprise_value"] == "Suspicious"
-    assert status["financial_currency"] == "Suspicious"
+    assert status["currency"] == "Suspicious"
+
+
+def test_unknown_currency_is_flagged_missing():
+    status = run_checks(sample_snapshot(), meta={"yahoo_enterprise_value": 1200.0})
+    assert status["currency"] == "Missing"
 
 
 def test_stale_statements_use_real_fiscal_year_end():
@@ -251,7 +258,7 @@ def test_download_failure_without_any_saved_data_raises(tmp_path, monkeypatch):
     monkeypatch.setattr(config, "CACHE_DIR", tmp_path / "cache")
     monkeypatch.setattr(config, "SNAPSHOT_DIR", tmp_path / "snapshot")
     monkeypatch.setattr(dl, "fetch_from_yahoo", lambda t: (_ for _ in ()).throw(RuntimeError("offline")))
-    with pytest.raises(RuntimeError):
+    with pytest.raises(dl.DataUnavailable, match="no saved copy"):
         dl.get_company_raw("TEST")
 
 

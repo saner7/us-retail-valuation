@@ -265,7 +265,19 @@ variable rather than in the code (the SEC rejects requests without one):
   opens with the saved data in `data/snapshot/` and shows a warning saying so. Refresh the
   snapshot from time to time with `python data_loader.py --refresh --save-snapshot` and push it.
 
-## Changing the companies
-Edit `TARGET`, `PEERS` and `COMPANY_NAMES` in `config.py`.
+## Analysing other companies
+Type any Yahoo Finance ticker and a comma-separated peer group (up to 10) in the app's sidebar;
+the default set is in `config.py`. Things to know:
+- Outside the US use the exchange suffix (e.g. `RACE.MI` Milan, `MC.PA` Paris, `CFR.SW` Zurich).
+- Amounts are shown in the target's trading currency. Companies that report in a different
+  currency than they trade in (e.g. Ferrari on the NYSE) are converted at the latest exchange rate.
+- The risk-free rate is downloaded only for USD; for other currencies the app asks you to enter
+  the 10-year government bond yield (for the euro: the German Bund).
+- One-off items were checked only for the default set; banks and insurers get a warning, as
+  EV/EBITDA and an FCFF DCF do not fit them. Yahoo's saved fallback data exists only for the
+  default set.
+- Example tested: Ferrari (`RACE.MI`) against luxury peers (LVMH, Hermès, Moncler, Richemont)
+  rather than carmakers, because the market prices Ferrari as a luxury brand for its business
+  model (scarcity, pricing power, margins), not as a car manufacturer.
 
 *Disclaimer: for educational purposes only, not investment advice.*

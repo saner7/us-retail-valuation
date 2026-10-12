@@ -5,7 +5,8 @@ input (blue text, yellow fill) and watch the value per share update, exactly
 like a banker's model. Every other sheet holds values: they are the output of
 the Python analysis at the moment of export.
 
-Money is in USD millions, per-share values in USD.
+Money is in millions of the target's trading currency, per-share values in
+that currency (the Market data sheet shows each company in its own currency).
 """
 
 from __future__ import annotations
@@ -26,11 +27,17 @@ import data_loader as dl
 import dcf
 import summary
 
-M = 1e6   # money in the workbook is in USD millions
+M = 1e6   # money in the workbook is in millions
 
 # Number formats (zeros show as "-", negatives in parentheses)
 FMT_MONEY = '#,##0;(#,##0);"-"'
-FMT_PRICE = '$#,##0.00;($#,##0.00);"-"'
+FMT_NUM2 = '#,##0.00;(#,##0.00);"-"'
+
+
+def price_format(currency: str) -> str:
+    """Per-share number format with the currency symbol, e.g. $1,234.50 or "CHF "1,234.50."""
+    sym = config.currency_symbol(currency).replace('"', '')
+    return f'"{sym}"#,##0.00;("{sym}"#,##0.00);"-"'
 FMT_PCT = '0.0%;(0.0%);"-"'
 FMT_MULT = '0.0"x";(0.0"x");"-"'
 FMT_NUM = '0.000'
@@ -120,16 +127,15 @@ def _write_frame(ws, df: pd.DataFrame, top: int, formats: dict = None, index_lab
 WACC_CELL = "WACC!$C$18"
 
 
-def _wacc_sheet(wb, model: dict, target: str, history_kd: float):
+def _wacc_sheet(wb, model: dict, target: str, history_kd: float, ccy: str, rf_note: str):
     ws = wb.create_sheet("WACC")
     wi = model["wacc_inputs"]
     _title(ws, f"{target} - Weighted average cost of capital",
-           "Blue cells on yellow are inputs: change them and every formula updates. Money in USD millions.")
+           f"Blue cells on yellow are inputs: change them and every formula updates. Money in {ccy} millions.")
     _header(ws, 4, ["Item", "", "Value", "Formula / source"])
     rows = [
         # row, label, value-or-formula, format, is_input, note
-        (5, "Risk-free rate (10y US Treasury)", wi["risk_free"], FMT_PCT, True,
-         f"Yahoo ^TNX, downloaded live"),
+        (5, "Risk-free rate (10y government bond)", wi["risk_free"], FMT_PCT, True, rf_note),
         (6, "Beta", wi["beta"], FMT_NUM, True, "Yahoo: 5-year monthly beta vs the S&P 500"),
         (7, "Equity risk premium", wi["equity_risk_premium"], FMT_PCT, True, "Assumption"),
         (8, "Country risk premium", wi["country_risk_premium"], FMT_PCT, True, "0 for the US"),
@@ -140,11 +146,13 @@ def _wacc_sheet(wb, model: dict, target: str, history_kd: float):
         (12, "Pre-tax cost of debt", "=C5+C11", FMT_PCT, False, "= risk-free + credit spread"),
         (13, "Tax rate", wi["tax_rate"], FMT_PCT, True, "Same as the DCF tax rate assumption"),
         (14, "After-tax cost of debt", "=C12*(1-C13)", FMT_PCT, False, "= pre-tax cost of debt x (1 - tax)"),
-        (15, "Equity value (market cap, $m)", wi["equity_value"] / M, FMT_MONEY, True, "Yahoo, live"),
-        (16, "Debt ($m, excl. lease liabilities)", wi["debt_value"] / M, FMT_MONEY, True,
+        (15, f"Equity value (market cap, {ccy}m)", wi["equity_value"] / M, FMT_MONEY, True, "Yahoo, live"),
+        (16, f"Debt ({ccy}m, excl. lease liabilities)", wi["debt_value"] / M, FMT_MONEY, True,
          "Total debt - lease liabilities (ASC 842: rent is already in EBITDA)"),
         (17, "Weight of equity E / (D + E)", "=C15/(C15+C16)", FMT_PCT, False, "Market-value weights"),
-        (18, "WACC", "=C17*C9+(1-C17)*C14", FMT_PCT, False, "= E/(D+E) x Ke + D/(D+E) x Kd after tax"),
+        # No risk-free rate entered -> #N/A instead of silently treating the empty cell as 0%
+        (18, "WACC", '=IF(ISBLANK(C5),NA(),C17*C9+(1-C17)*C14)', FMT_PCT, False,
+         "= E/(D+E) x Ke + D/(D+E) x Kd after tax (#N/A until a risk-free rate is entered)"),
     ]
     for r, label, value, fmt, is_input, note in rows:
         _put(ws, r, 1, label, bold=(r in (9, 14, 18)))
@@ -162,7 +170,7 @@ def _wacc_sheet(wb, model: dict, target: str, history_kd: float):
 # DCF sheet (live formulas)
 # ---------------------------------------------------------------------------
 
-def _dcf_sheet(wb, model: dict, target: str):
+def _dcf_sheet(wb, model: dict, target: str, ccy: str):
     ws = wb.create_sheet("DCF")
     kw = model["run_kwargs"]
     years = config.PROJECTION_YEARS
@@ -172,18 +180,18 @@ def _dcf_sheet(wb, model: dict, target: str):
     L = col(last)
 
     _title(ws, f"{target} - Discounted cash flow",
-           "Blue cells on yellow are inputs. Money in USD millions, per-share values in USD. "
+           f"Blue cells on yellow are inputs. Money in {ccy} millions, per-share values in {ccy}. "
            "FCFF = EBIT x (1 - tax) + D&A - capex - increase in NWC.")
 
     # --- Inputs ------------------------------------------------------------
     _header(ws, 4, ["Inputs", "Value", "Note"])
     inputs = [
-        (5, "Base revenue (TTM, $m)", kw["base_revenue"] / M, FMT_MONEY, "Sum of the last 4 quarters"),
+        (5, f"Base revenue (TTM, {ccy}m)", kw["base_revenue"] / M, FMT_MONEY, "Sum of the last 4 quarters"),
         (6, "Terminal growth rate", kw["terminal_growth"], FMT_PCT, "Gordon growth, perpetual"),
         (7, "Exit EV/EBITDA multiple", kw["exit_multiple"], FMT_MULT, "Default: peer median EV/EBITDA"),
-        (8, "Net debt ($m)", kw["net_debt"] / M, FMT_MONEY, "Debt excl. leases - cash"),
+        (8, f"Net debt ({ccy}m)", kw["net_debt"] / M, FMT_MONEY, "Debt excl. leases - cash"),
         (9, "Shares outstanding (m)", kw["shares"] / M, FMT_MONEY, "Yahoo"),
-        (10, "Current share price ($)", kw["price"], FMT_PRICE, "Yahoo"),
+        (10, f"Current share price ({ccy})", kw["price"], price_format(ccy), "Yahoo"),
         (11, "Mid-year convention (1 = on, 0 = off)", 1 if kw.get("mid_year", config.MID_YEAR_CONVENTION) else 0,
          "0", "Cash flows arrive during the year, not at its end"),
     ]
@@ -215,7 +223,7 @@ def _dcf_sheet(wb, model: dict, target: str):
 
     # --- Projection (formulas) ----------------------------------------------
     top = 16 + len(ASSUMPTION_ROWS) + 1       # 23
-    _header(ws, top, ["Projection ($m)", "TTM"] + [f"Year {i}" for i in range(1, years + 1)])
+    _header(ws, top, [f"Projection ({ccy}m)", "TTM"] + [f"Year {i}" for i in range(1, years + 1)])
     p = {name: top + 1 + i for i, name in enumerate(
         ["revenue", "ebitda", "d_and_a", "ebit", "taxes", "nopat", "capex", "nwc", "fcff",
          "period", "factor", "pv"])}
@@ -256,8 +264,8 @@ def _dcf_sheet(wb, model: dict, target: str):
     vlabels = {"sum_pv": "Sum of PV of FCFF", "tv": "Terminal value",
                "tv_period": "Terminal value discount period", "pv_tv": "PV of terminal value",
                "ev": "= Enterprise value", "net_debt": "- Net debt", "equity": "= Equity value",
-               "shares": "/ Shares outstanding (m)", "per_share": "= Value per share ($)",
-               "price": "Current share price ($)", "upside": "Upside / (downside)",
+               "shares": "/ Shares outstanding (m)", "per_share": f"= Value per share ({ccy})",
+               "price": f"Current share price ({ccy})", "upside": "Upside / (downside)",
                "tv_share": "Terminal value share of EV",
                "cross": "Cross-check: implied exit multiple / implied growth"}
     for name, r in v.items():
@@ -282,8 +290,8 @@ def _dcf_sheet(wb, model: dict, target: str):
             "net_debt": ("=$B$8", FMT_MONEY),
             "equity": (f"={c}{v['ev']}-{c}{v['net_debt']}", FMT_MONEY),
             "shares": ("=$B$9", FMT_MONEY),
-            "per_share": (f"={c}{v['equity']}/{c}{v['shares']}", FMT_PRICE),
-            "price": ("=$B$10", FMT_PRICE),
+            "per_share": (f"={c}{v['equity']}/{c}{v['shares']}", price_format(ccy)),
+            "price": ("=$B$10", price_format(ccy)),
             "upside": (f"={c}{v['per_share']}/{c}{v['price']}-1", FMT_PCT),
             "tv_share": (f"={c}{v['pv_tv']}/{c}{v['ev']}", FMT_PCT),
         })
@@ -310,28 +318,28 @@ def _dcf_sheet(wb, model: dict, target: str):
 # Value sheets
 # ---------------------------------------------------------------------------
 
-def _summary_sheet(wb, data, model, ff, reverse, results, target, peers):
+def _summary_sheet(wb, data, model, ff, reverse, results, target, peers, ccy):
     ws = wb.active
     ws.title = "Summary"
     v = data["companies"][target]["values"]
     rf = data["risk_free"]
-    _title(ws, f"{config.COMPANY_NAMES.get(target, target)} ({target}) - valuation summary",
+    _title(ws, f"{summary.company_name(data, target)} ({target}) - valuation summary",
            f"Exported {datetime.now():%Y-%m-%d %H:%M}. Peers: {', '.join(peers)}. Values on this sheet are "
            "a snapshot; the DCF and WACC sheets are live formulas.")
-    _put(ws, 4, 1, "Current share price ($)")
-    _put(ws, 4, 2, v["price"], FMT_PRICE)
-    _put(ws, 5, 1, "Market cap ($m)")
+    _put(ws, 4, 1, f"Current share price ({ccy})")
+    _put(ws, 4, 2, v["price"], price_format(ccy))
+    _put(ws, 5, 1, f"Market cap ({ccy}m)")
     _put(ws, 5, 2, v["market_cap"] / M, FMT_MONEY)
-    _put(ws, 6, 1, f"10-year Treasury yield ({rf['date']})")
-    _put(ws, 6, 2, rf["rate"], FMT_PCT)
+    _put(ws, 6, 1, f"Risk-free rate ({rf['date'] or 'entered by the user'})")
+    _put(ws, 6, 2, model["wacc_inputs"]["risk_free"], FMT_PCT)
     _put(ws, 7, 1, "WACC")
     _put(ws, 7, 2, model["wacc"]["wacc"], FMT_PCT)
 
-    _header(ws, 9, ["Football field: value per share ($)", "Low", "Mid", "High", "Basis"])
+    _header(ws, 9, [f"Football field: value per share ({ccy})", "Low", "Mid", "High", "Basis"])
     for i, (_, r) in enumerate(ff.iterrows(), start=10):
         _put(ws, i, 1, r["label"])
         for j, k in enumerate(["low", "mid", "high"], start=2):
-            _put(ws, i, j, r[k], FMT_PRICE)
+            _put(ws, i, j, r[k], price_format(ccy))
         _put(ws, i, 5, r["basis"], font=NOTE)
     row = 10 + len(ff) + 1
     _put(ws, row, 1, "Mid = peer median (comps) or base case (DCF). P/B is not in the football field: "
@@ -339,7 +347,7 @@ def _summary_sheet(wb, data, model, ff, reverse, results, target, peers):
 
     row += 2
     _header(ws, row, ["DCF (base case)", "Gordon growth", "Exit multiple"])
-    for i, (label, key, fmt) in enumerate([("Value per share ($)", "value_per_share", FMT_PRICE),
+    for i, (label, key, fmt) in enumerate([(f"Value per share ({ccy})", "value_per_share", price_format(ccy)),
                                            ("Upside / (downside)", "upside", FMT_PCT),
                                            ("Terminal value share of EV", "tv_share_of_ev", FMT_PCT)],
                                           start=row + 1):
@@ -364,10 +372,10 @@ def _summary_sheet(wb, data, model, ff, reverse, results, target, peers):
     _widths(ws, {"A": 44, "B": 14, "C": 14, "D": 14, "E": 80})
 
 
-def _sensitivity_sheet(wb, tables, price):
+def _sensitivity_sheet(wb, tables, price, ccy):
     ws = wb.create_sheet("Sensitivity")
-    _title(ws, "DCF sensitivity: value per share ($)",
-           f"Values at export (not live). Current share price ${price:,.2f}.")
+    _title(ws, f"DCF sensitivity: value per share ({ccy})",
+           f"Values at export (not live). Current share price {config.currency_symbol(ccy)}{price:,.2f}.")
     row = 4
     for method, title, colfmt in [("gordon", "WACC (rows) x terminal growth (columns)", FMT_PCT),
                                   ("exit", "WACC (rows) x exit EV/EBITDA (columns)", FMT_MULT)]:
@@ -380,7 +388,7 @@ def _sensitivity_sheet(wb, tables, price):
         for i, w in enumerate(t.index, start=row + 1):
             _put(ws, i, 1, w, FMT_PCT, bold=True)
             for j, x in enumerate(t.columns, start=2):
-                _put(ws, i, j, t.loc[w, x], FMT_PRICE)
+                _put(ws, i, j, t.loc[w, x], price_format(ccy))
         row += len(t) + 3
     _widths(ws, {"A": 12})
 
@@ -417,10 +425,10 @@ def _comps_sheet(wb, data, target, peers):
     _widths(ws, {"A": 24, **{get_column_letter(i): 14 for i in range(2, 9)}})
 
 
-def _bridge_sheet(wb, data, target, peers):
+def _bridge_sheet(wb, data, target, peers, ccy):
     ws = wb.create_sheet("Bridge")
     b = comps.bridge_table(data["companies"], target, peers)
-    _title(ws, f"Implied value bridge for {target} ($m unless stated)",
+    _title(ws, f"Implied value bridge for {target} ({ccy}m unless stated)",
            "EV multiples: metric x multiple = EV, - net debt = equity, / shares = value per share. "
            "P/E and P/B give equity value directly.")
     _header(ws, 4, ["Step"] + [f"{m} - {case}" for m, case in b.columns])
@@ -433,7 +441,7 @@ def _bridge_sheet(wb, data, target, peers):
             elif "Upside" in step:
                 _put(ws, i, j, x, FMT_PCT)
             elif "per share" in step:
-                _put(ws, i, j, x, FMT_PRICE)
+                _put(ws, i, j, x, price_format(ccy))
             else:
                 _put(ws, i, j, None if pd.isna(x) else x / M, FMT_MONEY)
     _widths(ws, {"A": 30, **{get_column_letter(i): 15 for i in range(2, 2 + len(b.columns))}})
@@ -442,18 +450,22 @@ def _bridge_sheet(wb, data, target, peers):
 def _market_data_sheet(wb, data):
     ws = wb.create_sheet("Market data")
     companies = data["companies"]
-    _title(ws, "Market and financial data (USD millions; per-share fields in USD)",
+    _title(ws, "Market and financial data (millions of each company's trading currency; per-share fields "
+               "in that currency, see the Currency row)",
            "Source: a = Yahoo Finance, m = manual override (see Data quality for the source note), "
            "d = derived by us. TTM = sum of the last 4 quarters.")
     tickers = list(companies)
     _header(ws, 4, ["Field"] + tickers + ["Source " + t for t in tickers])
+    _put(ws, 5, 1, "currency", bold=True)
+    for j, t in enumerate(tickers, start=2):
+        _put(ws, 5, j, companies[t]["meta"].get("currency") or "N/A", bold=True)
     per_share = {"price", "low_52w", "high_52w", "book_value_per_share"}
-    for i, field in enumerate(dl.ALL_FIELDS, start=5):
+    for i, field in enumerate(dl.ALL_FIELDS, start=6):
         _put(ws, i, 1, field)
         for j, t in enumerate(tickers, start=2):
             x = companies[t]["values"][field]
             if field in per_share:
-                _put(ws, i, j, x, FMT_PRICE)
+                _put(ws, i, j, x, FMT_NUM2)
             else:
                 _put(ws, i, j, None if dl.is_missing(x) else x / M, FMT_MONEY)
             _put(ws, i, j + len(tickers), companies[t]["sources"][field])
@@ -474,7 +486,8 @@ def _quality_sheet(wb, data):
 def _history_sheet(wb, data, target, reference):
     ws = wb.create_sheet("History")
     c = data["companies"][target]
-    _title(ws, f"{target} annual history (USD millions) and the ratios behind the DCF defaults",
+    ccy = c["meta"].get("currency") or ""
+    _title(ws, f"{target} annual history ({ccy} millions) and the ratios behind the DCF defaults",
            "Fiscal years are labelled by their end date.")
     h = c["history"].sort_index().copy()
     h.index = [d.strftime("FY end %Y-%m") for d in h.index]
@@ -498,22 +511,36 @@ def build_workbook(data: dict, choices: dict, target: str = None, peers: list = 
     """The full model as an .xlsx file (bytes), for st.download_button or a file.
     `choices` are the app's inputs (summary.default_choices() for the defaults)."""
     target = target or config.TARGET
-    peers = peers or config.PEERS
+    peers = peers if peers is not None else [t for t in data["companies"] if t != target]
+    ccy = summary.target_currency(data, target)
     model = summary.build_model(data, choices, target)
     kw = model["run_kwargs"]
     results = dcf.run_dcf(**kw)
     ff = summary.football_field_data(data["companies"], kw, target, peers)
     reverse = summary.reverse_dcf(kw)
-    tables = dcf.sensitivity_tables(kw)
-    defaults = dcf.default_inputs(data, target)
+    has_wacc = not pd.isna(kw["wacc_rate"])
+    tables = dcf.sensitivity_tables(kw) if has_wacc else None
+    defaults = dcf.default_inputs(data, target, peers)
+
+    rf = data["risk_free"]
+    if pd.isna(model["wacc_inputs"]["risk_free"]):
+        rf_note = f"ENTER the {rf['guidance']}"
+    elif rf.get("data_source") in ("manual", "unavailable") or model["wacc_inputs"]["risk_free"] != rf.get("rate"):
+        rf_note = "Entered by the user"
+    else:
+        rf_note = f"Yahoo {config.RISK_FREE_TICKERS.get(rf['currency'], '')}, {rf['date']}"
 
     wb = Workbook()
-    _summary_sheet(wb, data, model, ff, reverse, results, target, peers)
-    _dcf_sheet(wb, model, target)
-    _wacc_sheet(wb, model, target, defaults["historical_cost_of_debt"])
-    _sensitivity_sheet(wb, tables, kw["price"])
+    _summary_sheet(wb, data, model, ff, reverse, results, target, peers, ccy)
+    _dcf_sheet(wb, model, target, ccy)
+    _wacc_sheet(wb, model, target, defaults["historical_cost_of_debt"], ccy, rf_note)
+    if has_wacc:
+        _sensitivity_sheet(wb, tables, kw["price"], ccy)
+    else:
+        ws = wb.create_sheet("Sensitivity")
+        _title(ws, "DCF sensitivity: N/A", "Enter a risk-free rate in the app to calculate the WACC and the DCF.")
     _comps_sheet(wb, data, target, peers)
-    _bridge_sheet(wb, data, target, peers)
+    _bridge_sheet(wb, data, target, peers, ccy)
     _market_data_sheet(wb, data)
     _quality_sheet(wb, data)
     _history_sheet(wb, data, target, defaults["assumption_reference"])

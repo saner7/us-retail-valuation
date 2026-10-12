@@ -4,11 +4,13 @@ import os
 from pathlib import Path
 
 # --- Companies -------------------------------------------------------------
+# The default analysis. Any other target and peer group can be chosen in the app.
 TARGET = "TGT"
 PEERS = ["WMT", "COST", "KR", "DG", "BJ"]
 ALL_TICKERS = [TARGET] + PEERS
+MAX_PEERS = 10            # each company costs ~6 Yahoo requests; more risks being blocked
 
-COMPANY_NAMES = {
+COMPANY_NAMES = {         # display names for the default set; others use Yahoo's name
     "TGT": "Target",
     "WMT": "Walmart",
     "COST": "Costco",
@@ -17,11 +19,35 @@ COMPANY_NAMES = {
     "BJ": "BJ's Wholesale Club",
 }
 
+# Companies whose recent quarters were checked for one-off items (impairments,
+# gains, refunds...) against their filings; adjustments are in manual_overrides.csv.
+# For any other company the app warns that one-offs were not checked.
+ONE_OFFS_REVIEWED = {"TGT", "WMT", "COST", "KR", "DG", "BJ"}   # reviewed Oct 2026
+
+# Banks and insurers: EV/EBITDA and an FCFF DCF do not fit their business model.
+# Matched against Yahoo's industry name.
+FINANCIAL_INDUSTRY_KEYWORDS = ("Bank", "Insurance")
+
 # --- Currency --------------------------------------------------------------
-BASE_CURRENCY = "USD"     # all companies report in USD; no conversion needed
+# Results are shown in the target's trading currency. If a company reports in a
+# different currency than it trades in, its statement figures are converted at
+# the latest Yahoo exchange rate (ticker "<FROM><TO>=X").
+CURRENCY_SYMBOLS = {"USD": "$", "EUR": "€", "GBP": "£", "JPY": "¥"}   # others: code + space
 
 # --- WACC defaults (used in Stage 3, all editable in the app) ---------------
-RISK_FREE_TICKER = "^TNX"         # 10-year US Treasury yield, downloaded live
+# Risk-free rate: 10-year government bond yield in the target's currency.
+# Yahoo only provides it for USD; for other currencies the user enters it.
+RISK_FREE_TICKERS = {"USD": "^TNX"}
+RISK_FREE_TICKER = RISK_FREE_TICKERS["USD"]
+RISK_FREE_GUIDANCE = {
+    "USD": "10-year US Treasury yield",
+    "EUR": ("10-year German government bond (Bund) yield, e.g. from the Deutsche Bundesbank or the ECB. "
+            "Euro area companies usually use the Bund as the risk-free rate; for countries such as Italy, "
+            "the Italian-German yield spread (BTP-Bund spread) can optionally be added as the country risk premium"),
+    "GBP": "10-year UK government bond (gilt) yield, e.g. from the Bank of England",
+    "CHF": "10-year Swiss Confederation bond yield, e.g. from the Swiss National Bank",
+    "JPY": "10-year Japanese government bond (JGB) yield, e.g. from the Ministry of Finance Japan",
+}
 COUNTRY_RISK_PREMIUM = 0.0        # extra premium for country risk; 0 for the US
 
 # --- Files -----------------------------------------------------------------
@@ -103,3 +129,14 @@ FOOTBALL_FIELD_ROWS = ["52w", "ev_ebitda", "pe", "ev_sales", "dcf_exit", "dcf_go
 # environment variable, never in the code (it would end up in git history):
 #     export SEC_USER_AGENT="Your Name your@email.com"
 SEC_USER_AGENT = os.environ.get("SEC_USER_AGENT", "us-retail-valuation educational project")
+
+
+def currency_symbol(currency: str) -> str:
+    """'$' for USD, '€' for EUR, otherwise the code and a space ('CHF ')."""
+    if not currency:
+        return ""
+    return CURRENCY_SYMBOLS.get(currency, f"{currency} ")
+
+
+def risk_free_guidance(currency: str) -> str:
+    return RISK_FREE_GUIDANCE.get(currency, f"10-year government bond yield in {currency}")
