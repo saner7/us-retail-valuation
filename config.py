@@ -28,6 +28,10 @@ COUNTRY_RISK_PREMIUM = 0.0        # extra premium for country risk; 0 for the US
 PROJECT_DIR = Path(__file__).parent
 DATA_DIR = PROJECT_DIR / "data"
 CACHE_DIR = DATA_DIR / "cache"
+# A copy of the cache that is committed to git. Used only when the live download
+# fails and there is no local cache (e.g. a fresh cloud deploy blocked by Yahoo).
+# Refresh it with: python data_loader.py --refresh --save-snapshot
+SNAPSHOT_DIR = DATA_DIR / "snapshot"
 OVERRIDES_PATH = DATA_DIR / "manual_overrides.csv"
 
 # Re-download data only if the cached copy is older than this

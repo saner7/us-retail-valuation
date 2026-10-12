@@ -223,3 +223,41 @@ def test_overrides_file_without_optional_columns(tmp_path):
     assert set(dl.OVERRIDE_COLUMNS) <= set(ov.columns)
     assert ov.loc[0, "value"] == 5
     assert ov["adjusted_quarter"].isna().all()
+
+
+def test_download_failure_falls_back_to_snapshot(tmp_path, monkeypatch):
+    """Fresh deploy (no cache) + Yahoo blocks the download -> committed snapshot is used and labelled."""
+    import config
+    cache, snap = tmp_path / "cache", tmp_path / "snapshot"
+    monkeypatch.setattr(config, "CACHE_DIR", cache)
+    monkeypatch.setattr(config, "SNAPSHOT_DIR", snap)
+    good = {"snapshot": sample_snapshot(), "meta": {"ticker": "TEST", "fetched_at": "2026-10-09T10:00:00"},
+            "statements": {name: pd.DataFrame() for name in dl.STATEMENTS}}
+    monkeypatch.setattr(config, "CACHE_DIR", snap)          # write the snapshot with the normal cache writer
+    dl.save_company_cache("TEST", good)
+    monkeypatch.setattr(config, "CACHE_DIR", cache)
+
+    def blocked(ticker):
+        raise RuntimeError("YFRateLimitError: Too Many Requests")
+    monkeypatch.setattr(dl, "fetch_from_yahoo", blocked)
+    raw = dl.get_company_raw("TEST")
+    assert raw["meta"]["data_source"] == "snapshot"
+    assert raw["snapshot"]["price"] == 10.0
+
+
+def test_download_failure_without_any_saved_data_raises(tmp_path, monkeypatch):
+    import config
+    import pytest
+    monkeypatch.setattr(config, "CACHE_DIR", tmp_path / "cache")
+    monkeypatch.setattr(config, "SNAPSHOT_DIR", tmp_path / "snapshot")
+    monkeypatch.setattr(dl, "fetch_from_yahoo", lambda t: (_ for _ in ()).throw(RuntimeError("offline")))
+    with pytest.raises(RuntimeError):
+        dl.get_company_raw("TEST")
+
+
+def test_committed_snapshot_covers_every_ticker():
+    """The fallback must exist for the whole peer group, or a blocked cloud deploy cannot open."""
+    import config
+    for t in config.ALL_TICKERS:
+        assert dl.load_company_cache(t, config.SNAPSHOT_DIR) is not None, t
+    assert (config.SNAPSHOT_DIR / "risk_free_rate.json").exists()

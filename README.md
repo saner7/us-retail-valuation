@@ -1,5 +1,14 @@
 # US Retail Valuation: Comparable Companies + DCF
 
+<!-- ============================================================
+     FILL IN BEFORE SHARING: replace the two placeholders below.
+     ============================================================ -->
+**Live app:** _[APP LINK - paste your Streamlit Community Cloud URL here]_
+
+_[SHORT DESCRIPTION - a 2-3 sentence summary for LinkedIn readers goes here.]_
+
+---
+
 A valuation tool for **Target (TGT)**, benchmarked against **Walmart (WMT), Costco (COST),
 Kroger (KR), Dollar General (DG) and BJ's Wholesale Club (BJ)**.
 It combines a trading-comparables analysis with a discounted cash flow (DCF) model and
@@ -9,7 +18,7 @@ summarises both in a "football field" chart, the way an investment banking pitch
 > investment banking.
 
 ![App screenshot](docs/screenshot.png)
-*Summary tab: football field, DCF results and the reverse DCF box (data as of 9 October 2026).*
+*Summary tab: football field, DCF results and the reverse DCF box (data downloaded 12 October 2026; share prices are the 9 October close).*
 
 ## Status
 
@@ -115,7 +124,8 @@ the 52-week range, price × shares vs market cap, our EV vs Yahoo's EV, reportin
 and stale annual statements.
 
 ## Valuation commentary
-*Figures as of 9 October 2026 (price $153.64, 10-year Treasury 5.24%); they move with the data.*
+*Figures from the data downloaded on 12 October 2026 (price $153.64 at the 9 October close, 10-year
+Treasury 5.24%); they move with the data.*
 
 ### One-off items (manual overrides)
 Two one-offs distort the trailing twelve months, and neither is removed by Yahoo's
@@ -171,7 +181,7 @@ probably sits in between, and the gap is shown rather than hidden.
 ### What the current price implies (reverse DCF)
 With every other assumption unchanged, today's price of $153.64 implies:
 - a **WACC of 7.2%** (the model uses 9.2%), or
-- a **terminal growth rate of 4.9%** at the model WACC, or
+- a **terminal growth rate of 4.8%** at the model WACC, or
 - an **exit multiple of 10.3x**.
 
 The WACC is high because the risk-free rate is high (5.24%): cost of equity = 5.24% + 0.98 x 5.0%
@@ -220,18 +230,24 @@ export.py              Excel export (DCF and WACC as live formulas)
 app.py                 Streamlit app
 data/manual_overrides.csv
 data/cache/            downloaded data (not in git)
+data/snapshot/         saved copy of the data, used only if the live download fails
+.streamlit/config.toml app theme and settings (also used by Streamlit Community Cloud)
+requirements.txt       runtime dependencies (pinned); requirements-dev.txt adds pytest
 tests/                 pytest tests (offline: small hand-checkable numbers and a made-up data set)
 docs/screenshot.png    app screenshot
 ```
 
 ## How to run
+Needs **Python 3.11 to 3.14**. (Python 3.15 does not work yet: Streamlit needs `pyarrow`,
+which has no ready-made package for 3.15, so the installation fails.)
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
-pip install -r requirements.txt
+pip install -r requirements-dev.txt   # or requirements.txt if you don't need the tests
 
 python data_loader.py            # snapshot, annual history and data quality report
 python data_loader.py --refresh  # ignore the 24h cache and download again
+python data_loader.py --refresh --save-snapshot   # also update the committed fallback data
 python comps.py                  # comparable companies analysis
 python dcf.py                    # DCF valuation in the terminal
 python dcf.py --html             # also save sensitivity heatmaps to output/
@@ -243,6 +259,14 @@ pytest                           # run the tests (the Excel formula test needs L
 If you download SEC filings with your own scripts, set your contact in an environment
 variable rather than in the code (the SEC rejects requests without one):
 `export SEC_USER_AGENT="Your Name you@example.com"` (read as `config.SEC_USER_AGENT`).
+
+## Deploying on Streamlit Community Cloud
+- Main file: `app.py`. In **Advanced settings** choose **Python 3.12** (Community Cloud ignores
+  `runtime.txt`; the version can only be changed by deleting and redeploying the app).
+- No secrets or API keys are needed.
+- Yahoo Finance often rate-limits shared cloud servers. If the live download fails, the app
+  opens with the saved data in `data/snapshot/` and shows a warning saying so. Refresh the
+  snapshot from time to time with `python data_loader.py --refresh --save-snapshot` and push it.
 
 ## Changing the companies
 Edit `TARGET`, `PEERS` and `COMPANY_NAMES` in `config.py`.

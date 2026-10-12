@@ -137,10 +137,11 @@ def fetch_risk_free_from_yahoo() -> dict:
 #    Snapshot -> JSON, statements -> CSV, so you can open them and look.
 # ---------------------------------------------------------------------------
 
-def _cache_paths(ticker: str) -> dict:
-    paths = {"snapshot": config.CACHE_DIR / f"{ticker}_snapshot.json"}
+def _cache_paths(ticker: str, directory=None) -> dict:
+    directory = directory or config.CACHE_DIR
+    paths = {"snapshot": directory / f"{ticker}_snapshot.json"}
     for name in STATEMENTS:
-        paths[name] = config.CACHE_DIR / f"{ticker}_{name}.csv"
+        paths[name] = directory / f"{ticker}_{name}.csv"
     return paths
 
 
@@ -157,9 +158,10 @@ def save_company_cache(ticker: str, data: dict) -> None:
         data["statements"][name].to_csv(paths[name])
 
 
-def load_company_cache(ticker: str):
-    """Return cached data, or None if there is no cache yet."""
-    paths = _cache_paths(ticker)
+def load_company_cache(ticker: str, directory=None):
+    """Return cached data, or None if there is no cache yet.
+    `directory` defaults to the cache; pass config.SNAPSHOT_DIR for the snapshot."""
+    paths = _cache_paths(ticker, directory)
     if not paths["snapshot"].exists():
         return None
     with open(paths["snapshot"]) as f:
@@ -177,18 +179,25 @@ def load_company_cache(ticker: str):
 
 def get_company_raw(ticker: str, refresh: bool = False) -> dict:
     """Use the cache if it is fresh, otherwise download.
-    If the download fails but an old cache exists, use the old cache and warn."""
+    If the download fails, fall back to the old cache, then to the committed
+    snapshot, and warn. meta["data_source"] says which one was used:
+    "live" (downloaded now or within the cache age), "old cache" or "snapshot"."""
     cached = load_company_cache(ticker)
     if cached and not refresh and _is_fresh(cached["meta"]["fetched_at"], config.CACHE_MAX_AGE_HOURS):
+        cached["meta"].setdefault("data_source", "live")
         return cached
     try:
         data = fetch_from_yahoo(ticker)
+        data["meta"]["data_source"] = "live"
         save_company_cache(ticker, data)
         return data
     except Exception as e:
-        if cached:
-            warnings.warn(f"{ticker}: download failed ({e}); using cache from {cached['meta']['fetched_at']}")
-            return cached
+        fallback = cached or load_company_cache(ticker, config.SNAPSHOT_DIR)
+        if fallback:
+            source = "old cache" if cached else "snapshot"
+            fallback["meta"]["data_source"] = source
+            warnings.warn(f"{ticker}: download failed ({e}); using {source} from {fallback['meta']['fetched_at']}")
+            return fallback
         raise
 
 
@@ -200,13 +209,21 @@ def get_risk_free_rate(refresh: bool = False) -> dict:
         with open(path) as f:
             cached = json.load(f)
         if not refresh and _is_fresh(cached["fetched_at"], config.CACHE_MAX_AGE_HOURS):
+            cached.setdefault("data_source", "live")
             return cached
     try:
         rf = fetch_risk_free_from_yahoo()
+        rf["data_source"] = "live"
     except Exception as e:
-        if cached:
-            warnings.warn(f"Risk-free rate download failed ({e}); using cache from {cached['fetched_at']}")
-            return cached
+        fallback, source = cached, "old cache"
+        snapshot_path = config.SNAPSHOT_DIR / "risk_free_rate.json"
+        if fallback is None and snapshot_path.exists():
+            with open(snapshot_path) as f:
+                fallback, source = json.load(f), "snapshot"
+        if fallback:
+            fallback["data_source"] = source
+            warnings.warn(f"Risk-free rate download failed ({e}); using {source} from {fallback['fetched_at']}")
+            return fallback
         raise
     config.CACHE_DIR.mkdir(parents=True, exist_ok=True)
     with open(path, "w") as f:
@@ -527,6 +544,23 @@ def load_all(tickers=None, refresh: bool = False) -> dict:
     return {"companies": companies, "risk_free": get_risk_free_rate(refresh)}
 
 
+def data_sources(data: dict) -> dict:
+    """Where each piece of data came from: {name: "live" | "old cache" | "snapshot"}."""
+    out = {t: c["meta"].get("data_source", "live") for t, c in data["companies"].items()}
+    out["risk_free_rate"] = data["risk_free"].get("data_source", "live")
+    return out
+
+
+def save_snapshot() -> None:
+    """Copy the current cache into config.SNAPSHOT_DIR (committed to git), so a
+    fresh deploy still opens if Yahoo blocks the download."""
+    import shutil
+    config.SNAPSHOT_DIR.mkdir(parents=True, exist_ok=True)
+    for path in config.CACHE_DIR.glob("*"):
+        if path.suffix in (".json", ".csv"):
+            shutil.copy2(path, config.SNAPSHOT_DIR / path.name)
+
+
 def snapshot_table(companies: dict) -> pd.DataFrame:
     """Rows = fields, columns = tickers."""
     return pd.DataFrame({t: c["values"] for t, c in companies.items()}).loc[ALL_FIELDS]
@@ -555,9 +589,16 @@ def fmt_number(x, field: str = "") -> str:
 def main():
     parser = argparse.ArgumentParser(description="Download and check US retail data")
     parser.add_argument("--refresh", action="store_true", help="ignore cache, download again")
+    parser.add_argument("--save-snapshot", action="store_true",
+                        help="copy the cache to data/snapshot/ (the committed fallback)")
     args = parser.parse_args()
 
     data = load_all(refresh=args.refresh)
+    if args.save_snapshot:
+        if any(s != "live" for s in data_sources(data).values()):
+            raise SystemExit("Not saving the snapshot: some data is not fresh. Run with --refresh first.")
+        save_snapshot()
+        print(f"Snapshot saved to {config.SNAPSHOT_DIR}")
     companies, rf = data["companies"], data["risk_free"]
 
     print(f"\n10-year US Treasury yield (risk-free rate): {rf['rate']:.2%} ({rf['date']})")

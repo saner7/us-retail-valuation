@@ -216,6 +216,14 @@ price = tv["price"]
 st.title(f"{NAME} ({TARGET}) valuation")
 st.caption("Trading comparables + DCF. All figures in USD. For educational purposes only, not investment advice.")
 
+# If Yahoo blocked the download (common on shared cloud servers), say which saved data is shown
+stale = {name: src for name, src in dl.data_sources(data).items() if src != "live"}
+if stale:
+    dates = sorted({companies[t]["meta"]["fetched_at"][:10] for t in stale if t in companies}
+                   | ({data["risk_free"]["fetched_at"][:10]} if "risk_free_rate" in stale else set()))
+    st.warning(f"Live download from Yahoo Finance failed, so saved data is shown for {', '.join(stale)} "
+               f"(from {', '.join(dates)}). Try **Refresh data** later.")
+
 tab_summary, tab_dcf, tab_comps, tab_data = st.tabs(["Summary", "DCF", "Comps", "Data & quality"])
 
 

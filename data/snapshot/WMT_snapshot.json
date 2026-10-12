@@ -1,0 +1,24 @@
+{
+  "snapshot": {
+    "price": 111.35,
+    "market_cap": 886132113408.0,
+    "total_debt": 75092000768.0,
+    "cash": 11528999936.0,
+    "revenue_ttm": 735839977472.0,
+    "ebitda_ttm": 44073000960.0,
+    "net_income_ttm": 22076000256.0,
+    "shares_outstanding": 7958079155.0,
+    "book_value_per_share": 12.369,
+    "low_52w": 98.88,
+    "high_52w": 135.16
+  },
+  "meta": {
+    "ticker": "WMT",
+    "fetched_at": "2026-10-12T13:16:45",
+    "currency": "USD",
+    "financial_currency": "USD",
+    "yahoo_enterprise_value": 953546637312,
+    "beta": 0.578,
+    "data_source": "live"
+  }
+}
