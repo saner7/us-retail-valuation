@@ -1,0 +1,6 @@
+# Manual overrides: one value per line. These replace Yahoo Finance data.
+# field must be one of the names in data_loader.py (SNAPSHOT_FIELDS or DERIVED_FIELDS).
+# Values are in TRY (full units, not millions). Always write the source in "note".
+# Example (remove the leading # to activate):
+# CRFSA.IS,ebitda_ttm,1234000000,"KAP 2026 Q2 report, p.12"
+ticker,field,value,note
