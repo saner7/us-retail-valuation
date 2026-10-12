@@ -3,9 +3,9 @@
 <!-- ============================================================
      FILL IN BEFORE SHARING: replace the two placeholders below.
      ============================================================ -->
-**Live app:** _[APP LINK - paste your Streamlit Community Cloud URL here]_
+**Live app:** _[APP LINK ](https://tgt-valuation.streamlit.app/)]_
 
-_[SHORT DESCRIPTION - a 2-3 sentence summary for LinkedIn readers goes here.]_
+_Interactive valuation of Target (NYSE: TGT) using comparable companies and a DCF, with a football field summary and a linked Excel model. Built as a learning project by an IB Diploma student interested in investment banking.
 
 ---
 
