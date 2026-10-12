@@ -16,7 +16,7 @@ summarises both in a "football field" chart, the way an investment banking pitch
 | Stage | Content | Status |
 |---|---|---|
 | 1 | Data layer: download, cache, manual overrides, data quality report | Done |
-| 2 | Comparable companies (multiples, peer statistics, implied value) | Planned |
+| 2 | Comparable companies (multiples, peer statistics, implied value) | Done |
 | 3 | DCF (FCFF projection, WACC, Gordon growth + exit multiple, sensitivity) | Planned |
 | 4 | Streamlit app, football field chart, Excel export | Planned |
 
@@ -34,6 +34,21 @@ summarises both in a "football field" chart, the way an investment banking pitch
 - **Manual overrides**: any value can be replaced in `data/manual_overrides.csv`
   (with a source note). Every value is tagged as `auto`, `manual`, `derived` or `missing`.
 - **No invented data**: if a value cannot be found it stays `N/A` and is flagged. It is never estimated.
+
+### Comparable companies (Stage 2)
+- Multiples: **EV/Sales, EV/EBITDA, P/E, P/B**, plus EBITDA margin and net margin (all TTM).
+- Peer statistics (mean, median, min, max, 25th/75th percentile) use the **peers only**;
+  the target is never included in its own benchmark.
+- **Exclusions**: a multiple is dropped (shown as "NM", not meaningful) if an input is missing,
+  the denominator is zero or negative (e.g. P/E of a loss-making company), or it exceeds a
+  sanity cap set in `config.py` (e.g. P/E > 100x). Every exclusion is listed with its reason.
+- **Valuation range**: the 25th-75th percentile of peer multiples (min-max if fewer than
+  4 valid peers), with the median as the mid-point.
+- **Bridge to value per share**:
+  - EV multiples: target metric × multiple = implied EV → − net debt = equity value → ÷ shares = value per share
+  - Equity multiples (P/E, P/B): target metric × multiple = equity value → ÷ shares (no net debt step)
+- Peer selection matters: Walmart and Costco trade at premium multiples, which pulls the peer
+  median up. The range is a starting point for judgement, not an answer.
 
 ### Data quality checks
 Missing fields, zero or negative EBITDA, losses (P/E excluded), negative equity, price outside
@@ -57,6 +72,7 @@ and stale annual statements.
 ```
 config.py              tickers, settings and thresholds
 data_loader.py         download, cache, overrides, data quality report
+comps.py               trading multiples, peer statistics, implied value bridge
 data/manual_overrides.csv
 data/cache/            downloaded data (not in git)
 tests/                 pytest unit tests (offline, small hand-checkable numbers)
@@ -70,6 +86,7 @@ pip install -r requirements.txt
 
 python data_loader.py            # snapshot, annual history and data quality report
 python data_loader.py --refresh  # ignore the 24h cache and download again
+python comps.py                  # comparable companies analysis
 pytest                           # run the unit tests
 ```
 
