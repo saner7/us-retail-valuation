@@ -38,6 +38,13 @@ EV_MULTIPLES = ["ev_sales", "ev_ebitda"]
 
 LABELS = {k: v[2] for k, v in {**MULTIPLES, **MARGINS}.items()}
 
+# Caveats shown next to a multiple in the app and the Excel export
+MULTIPLE_NOTES = {
+    "pb": ("P/B is shown for completeness but is not meaningful for retailers: their value comes "
+           "from cash flow, not from the assets on the balance sheet, and share buybacks shrink "
+           "book equity and inflate P/B. It is left out of the football field."),
+}
+
 
 # ---------------------------------------------------------------------------
 # 1) Multiples for one company
@@ -191,7 +198,7 @@ def football_field_rows(companies: dict, target: str = None, peers: list = None)
         r = implied_value(target_values, name, (low, mid, high))
         lo_ps, mid_ps, hi_ps = r["per_share"]
         rows.append({
-            "multiple": r["multiple"], "method": method,
+            "key": name, "multiple": r["multiple"], "method": method,
             "multiple_low": low, "multiple_median": mid, "multiple_high": high,
             "price_low": lo_ps, "price_median": mid_ps, "price_high": hi_ps,
             "upside_median": mid_ps / price - 1 if not math.isnan(mid_ps) else np.nan,

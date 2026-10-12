@@ -9,7 +9,7 @@ summarises both in a "football field" chart, the way an investment banking pitch
 > investment banking.
 
 ![App screenshot](docs/screenshot.png)
-*(screenshot to be added)*
+*Summary tab: football field, DCF results and the reverse DCF box (data as of 9 October 2026).*
 
 ## Status
 
@@ -18,7 +18,7 @@ summarises both in a "football field" chart, the way an investment banking pitch
 | 1 | Data layer: download, cache, manual overrides, data quality report | Done |
 | 2 | Comparable companies (multiples, peer statistics, implied value) | Done |
 | 3 | DCF (FCFF projection, WACC, Gordon growth + exit multiple, sensitivity) | Done |
-| 4 | Streamlit app, football field chart, Excel export | Planned |
+| 4 | Streamlit app, football field chart, Excel export | Done |
 
 ## Methodology
 
@@ -91,6 +91,24 @@ summarises both in a "football field" chart, the way an investment banking pitch
   WACC × exit multiple ±2x (1x steps), shown as heatmaps colored around the current price.
 - A warning is shown when the terminal value is more than 75% of enterprise value.
 
+### App, football field and Excel export (Stage 4)
+- **Streamlit app** (`app.py`) with four tabs: Summary, DCF, Comps, Data & quality. Every DCF and
+  WACC assumption is in the sidebar, with its default and the history it comes from in the help
+  text. Revenue growth and the EBITDA margin are set by a start (Year 1) and an end (Year 5)
+  value; an optional year-by-year table overrides individual years.
+- **Football field**, top to bottom: 52-week trading range, comps EV/EBITDA, P/E and EV/Sales
+  (peer 25th-75th percentile, tick at the median), DCF exit multiple and DCF Gordon growth
+  (WACC ±0.5% x exit multiple ±1x or terminal growth ±0.5%, tick at the base case), with the
+  current price as a dashed vertical line. **P/B is left out** of the chart (it stays in the
+  comps tables with a note): a retailer's value comes from its cash flows, not from the
+  assets on its balance sheet, and share buybacks shrink book equity and inflate P/B.
+- **Reverse DCF box**: the WACC, terminal growth and exit multiple implied by today's price.
+- **Excel export** (`export.py`, also the download button in the app). The **DCF and WACC
+  sheets are live formulas**: inputs are blue on yellow, and changing one updates the value
+  per share. The other sheets (Summary, Sensitivity, Comps, Bridge, Market data, Data quality,
+  History) hold values from the moment of export. A test recalculates the workbook with
+  LibreOffice and checks that Excel and Python agree to 9 significant digits.
+
 ### Data quality checks
 Missing fields, zero or negative EBITDA, losses (P/E excluded), negative equity, price outside
 the 52-week range, price × shares vs market cap, our EV vs Yahoo's EV, reporting currency,
@@ -137,6 +155,12 @@ Effect on the Gordon value per share: $47 -> $101.
   6.3x final-year EBITDA.
 - **Exit multiple: $167 (+9%)**. The peer median EV/EBITDA of 11.3x implies a perpetual
   growth rate of 5.4%, which no mature retailer can sustain forever.
+
+**Read the exit multiple result as an optimistic upper bound.** The 11.3x is the peer median,
+and the peer group includes Walmart and Costco, which trade at premium multiples. Target's own
+EV/EBITDA is 8.7x on reported TTM EBITDA (9.7x once the tariff refund is removed), and today's
+price implies an exit multiple of 10.3x. Applying 11.3x assumes Target will be valued more
+richly in five years than it is today, which is why this method lands above the price.
 
 The two methods ask different questions. Gordon asks what the cash flows are worth at
 *our* discount rate; the exit multiple asks what buyers pay *today* for similar companies.
@@ -190,10 +214,14 @@ config.py              tickers, settings and thresholds
 data_loader.py         download, cache, overrides, data quality report
 comps.py               trading multiples, peer statistics, implied value bridge
 dcf.py                 projection, FCFF, WACC, terminal value, sensitivity tables
-charts.py              Plotly charts (sensitivity heatmap)
+summary.py             football field data, reverse DCF, app inputs -> model
+charts.py              Plotly charts (football field, sensitivity heatmap)
+export.py              Excel export (DCF and WACC as live formulas)
+app.py                 Streamlit app
 data/manual_overrides.csv
 data/cache/            downloaded data (not in git)
-tests/                 pytest unit tests (offline, small hand-checkable numbers)
+tests/                 pytest tests (offline: small hand-checkable numbers and a made-up data set)
+docs/screenshot.png    app screenshot
 ```
 
 ## How to run
@@ -207,7 +235,9 @@ python data_loader.py --refresh  # ignore the 24h cache and download again
 python comps.py                  # comparable companies analysis
 python dcf.py                    # DCF valuation in the terminal
 python dcf.py --html             # also save sensitivity heatmaps to output/
-pytest                           # run the unit tests
+python export.py                 # Excel model with default assumptions -> output/TGT_valuation.xlsx
+streamlit run app.py             # the app (http://localhost:8501)
+pytest                           # run the tests (the Excel formula test needs LibreOffice)
 ```
 
 If you download SEC filings with your own scripts, set your contact in an environment

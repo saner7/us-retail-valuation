@@ -83,6 +83,16 @@ SENS_MULTIPLE_RANGE, SENS_MULTIPLE_STEP = 2.0, 1.0
 # Warn if the terminal value is more than this share of enterprise value
 TERMINAL_VALUE_WARNING = 0.75
 
+# --- Football field (Stage 4) ----------------------------------------------
+# DCF bars span every combination of base WACC +/- FF_WACC_DELTA with terminal
+# growth +/- FF_GROWTH_DELTA (Gordon) or exit multiple +/- FF_MULTIPLE_DELTA (exit).
+FF_WACC_DELTA = 0.005
+FF_GROWTH_DELTA = 0.005
+FF_MULTIPLE_DELTA = 1.0
+# Rows of the football field, top to bottom. P/B stays in the comps tables but is
+# not on the chart (see comps.MULTIPLE_NOTES).
+FOOTBALL_FIELD_ROWS = ["52w", "ev_ebitda", "pe", "ev_sales", "dcf_exit", "dcf_gordon"]
+
 # --- SEC EDGAR -------------------------------------------------------------
 # The SEC asks every automated request to identify itself in the User-Agent and
 # answers 403 to requests without a contact address. Put your own contact in an
