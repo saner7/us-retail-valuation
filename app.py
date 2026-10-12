@@ -21,6 +21,7 @@ import config
 import data_loader as dl
 import dcf
 import export
+import scenarios
 import summary
 
 YEARS = [f"Year {i}" for i in range(1, config.PROJECTION_YEARS + 1)]
@@ -89,9 +90,11 @@ def load_data(tickers: tuple, refresh_token: int, refresh: bool) -> dict:
 
 
 @st.cache_data(show_spinner="Building the Excel file...")
-def excel_bytes(key: str, _data: dict, _choices: dict, target: str, peers: tuple) -> bytes:
+def excel_bytes(key: str, _data: dict, _choices: dict, target: str, peers: tuple, _scenarios: dict,
+                _weights: dict) -> bytes:
     # The underscore arguments are not hashed; `key` identifies the data and the inputs
-    return export.build_workbook(_data, _choices, target, list(peers))
+    return export.build_workbook(_data, _choices, target, list(peers), scenario_values=_scenarios,
+                                 weights=_weights)
 
 
 tickers = (TARGET, *PEERS)
@@ -133,8 +136,10 @@ INPUTS = {
                      f"Falls in a straight line to the terminal growth rate in Year {config.PROJECTION_YEARS}. "
                      f"History: CAGR {pct(ref.loc['revenue_growth', 'all_years_avg'])}, "
                      f"latest year {pct(ref.loc['revenue_growth', 'latest_year'])}."),
-    "terminal_growth": ("Terminal growth (%)", "pct",
-                        "Long-run growth after the projection; also the Year 5 revenue growth."),
+    "growth_end": (f"Revenue growth, Year {config.PROJECTION_YEARS} (%)", "pct",
+                   "Revenue growth moves in a straight line from Year 1 to this value. "
+                   "Default: equal to the terminal growth rate."),
+    "terminal_growth": ("Terminal growth (%)", "pct", "Long-run growth after the projection (Gordon growth)."),
     "margin_start": ("EBITDA margin, Year 1 (%)", "pct",
                      f"Default: current TTM margin with one-offs removed ({pct(ref.loc['ebitda_margin', 'ttm'])})."),
     "margin_end": (f"EBITDA margin, Year {config.PROJECTION_YEARS} (%)", "pct",
@@ -180,6 +185,9 @@ def reset_inputs():
     st.session_state["in_mid_year"] = defaults["mid_year"]
     st.session_state["per_year_on"] = False
     st.session_state.pop("per_year_editor", None)
+    st.session_state.pop("scenario_editor", None)
+    for sc in config.SCENARIOS:
+        st.session_state[f"w_{sc}"] = config.SCENARIO_WEIGHTS[sc] * 100
 
 
 # New company group -> every input back to that group's defaults
@@ -203,7 +211,7 @@ with st.sidebar:
         st.number_input(label, key=f"in_{name}", step=step, format="%.2f", help=help_text)
 
     st.subheader("Operating assumptions")
-    for name in ["growth_start", "terminal_growth", "margin_start", "margin_end",
+    for name in ["growth_start", "growth_end", "terminal_growth", "margin_start", "margin_end",
                  "da_pct", "capex_pct", "nwc_pct", "tax_rate"]:
         widget(name, 0.1)
     st.subheader("WACC")
@@ -249,7 +257,46 @@ model = summary.build_model(data, choices, TARGET)
 kw = model["run_kwargs"]
 HAS_DCF = not _missing(kw["wacc_rate"])
 result = dcf.run_dcf(**kw)
-ff = summary.football_field_data(companies, kw, TARGET, PEERS)
+
+
+# ---------------------------------------------------------------------------
+# Scenarios. Base = the sidebar inputs; Bear / Bull defaults are derived from
+# history (scenarios.default_scenarios) and can be edited in the Scenarios tab.
+# As with the year-by-year table, the edits live in session_state.
+# ---------------------------------------------------------------------------
+
+SC_COLS = [config.SCENARIO_LABELS[sc] for sc in config.SCENARIOS]
+sc_defaults = scenarios.default_scenarios(data, TARGET, PEERS, choices)
+
+
+def scenario_base_table(sc_def: dict) -> pd.DataFrame:
+    rows = {}
+    for f, (label, unit) in scenarios.FIELDS.items():
+        scale = 100 if unit == "%" else 1
+        rows[f"{label} ({unit})"] = {config.SCENARIO_LABELS[sc]: (None if _missing(sc_def[sc][f]) else sc_def[sc][f] * scale)
+                                      for sc in config.SCENARIOS}
+        rows[f"{label} ({unit})"]["Why (Bear / Bull default)"] = sc_def["rationale"][f]
+    return pd.DataFrame(rows).T
+
+
+sc_table = scenario_base_table(sc_defaults)
+for row, cols in st.session_state.get("scenario_editor", {}).get("edited_rows", {}).items():
+    for colname, value in cols.items():
+        if colname in ("Bear", "Bull") and value is not None:
+            sc_table.iloc[int(row), sc_table.columns.get_loc(colname)] = value
+sc_values = {}
+for sc in config.SCENARIOS:
+    col = config.SCENARIO_LABELS[sc]
+    sc_values[sc] = {f: (float("nan") if sc_table.iloc[i][col] is None or _missing(sc_table.iloc[i][col])
+                         else float(sc_table.iloc[i][col]) / (100 if unit == "%" else 1))
+                     for i, (f, (_, unit)) in enumerate(scenarios.FIELDS.items())}
+for sc in config.SCENARIOS:
+    st.session_state.setdefault(f"w_{sc}", config.SCENARIO_WEIGHTS[sc] * 100)
+weights = {sc: (st.session_state[f"w_{sc}"] or 0) / 100 for sc in config.SCENARIOS}
+sc_runs = scenarios.run_scenarios(data, choices, sc_values, TARGET)
+sc_results = scenarios.results_table(sc_runs, weights)
+
+ff = summary.football_field_data(companies, kw, TARGET, PEERS, scenario_runs=sc_runs if HAS_DCF else None)
 reverse = summary.reverse_dcf(kw)
 mtable, exclusions = comps.multiples_table(companies)
 pstats = comps.peer_stats(mtable, PEERS)
@@ -271,7 +318,7 @@ if stale:
     st.warning(f"Live download from Yahoo Finance failed, so saved data is shown for {', '.join(stale)} "
                f"(from {', '.join(dates)}). Try **Refresh data** later.")
 
-tab_summary, tab_dcf, tab_comps, tab_data = st.tabs(["Summary", "DCF", "Comps", "Data & quality"])
+tab_summary, tab_dcf, tab_sc, tab_comps, tab_data = st.tabs(["Summary", "DCF", "Scenarios", "Comps", "Data & quality"])
 
 
 # ---------------------------------------------------------------------------
@@ -318,9 +365,10 @@ with tab_summary:
             view[c] = view[c].map(cur)
         st.dataframe(view.set_index("label"), width="stretch")
 
-    excel_key = repr((tickers, companies[TARGET]["meta"].get("fetched_at"), sorted(choices.items())))
+    excel_key = repr((tickers, companies[TARGET]["meta"].get("fetched_at"), sorted(choices.items()),
+                      sorted((k, sorted(v.items())) for k, v in sc_values.items()), sorted(weights.items())))
     st.download_button("Download Excel model", type="primary",
-                       data=excel_bytes(excel_key, data, choices, TARGET, tuple(PEERS)),
+                       data=excel_bytes(excel_key, data, choices, TARGET, tuple(PEERS), sc_values, weights),
                        file_name=f"{TARGET}_valuation.xlsx",
                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                        help="DCF and WACC sheets use live Excel formulas; the other sheets hold values.")
@@ -350,7 +398,7 @@ with tab_dcf:
                 help="Overrides the sidebar values for individual years. Values in percent.")
     if st.session_state.get("per_year_on"):
         st.data_editor(base_table, key="per_year_editor", width="stretch",
-                       column_config={y: st.column_config.NumberColumn(y, format="%.2f %%", step=0.01)
+                       column_config={y: st.column_config.NumberColumn(y, format="%.2f %%", step=0.0001)
                                       for y in YEARS})
         st.caption("Starts from the sidebar values; your edits replace them for the edited cells. "
                    "The WACC keeps using the sidebar tax rate.")
@@ -414,6 +462,59 @@ with tab_dcf:
         h2.plotly_chart(charts.sensitivity_heatmap(tables["exit"], price, "Exit multiple: value per share",
                                                    x_is_multiple=True, base_x=kw["exit_multiple"],
                                                    base_wacc=kw["wacc_rate"], currency=CCY),
+                        width="stretch")
+
+
+# ---------------------------------------------------------------------------
+# Scenarios
+# ---------------------------------------------------------------------------
+
+with tab_sc:
+    st.markdown(
+        "Three versions of the future. **Bear**, **Base** and **Bull** differ in how the business performs "
+        "(growth, margins, capex, terminal growth, exit multiple). The **WACC is the same in all three**: "
+        "it measures how risky the cash flows are, not how good they turn out to be. D&A, working capital "
+        "and the tax rate are shared too.")
+    st.subheader("Assumptions")
+    st.data_editor(scenario_base_table(sc_defaults), key="scenario_editor", width="stretch",
+                   disabled=["Base", "Why (Bear / Bull default)"],
+                   # a fine step: the editor cuts displayed values to the step size instead of rounding
+                   column_config={c: st.column_config.NumberColumn(c, format="%.2f", step=0.0001) for c in SC_COLS}
+                   | {"Why (Bear / Bull default)": st.column_config.TextColumn(width="large")})
+    st.caption("Base comes from the sidebar; edit Bear and Bull here (percentages in %, the exit multiple in x). "
+               "Reset inputs in the sidebar restores the defaults.")
+    with st.expander("Why these Bear / Bull defaults"):
+        for f, (label, _) in scenarios.FIELDS.items():
+            st.markdown(f"- **{label}**: {sc_defaults['rationale'][f]}")
+
+    st.subheader("Probability weights")
+    w1, w2, w3 = st.columns(3)
+    for col, sc in zip((w1, w2, w3), config.SCENARIOS):
+        col.number_input(f"{config.SCENARIO_LABELS[sc]} (%)", key=f"w_{sc}", min_value=0.0, max_value=100.0,
+                         step=5.0, format="%.1f")
+    if not scenarios.weights_ok(weights):
+        st.warning(f"The weights add up to {sum(weights.values()):.1%}, not 100%: the probability-weighted "
+                   f"value is N/A until they do.")
+
+    st.subheader(f"Results ({CCY})")
+    if not HAS_DCF:
+        st.info(f"Enter the risk-free rate in the sidebar ({rf_data['guidance']}) to run the scenarios.")
+    labels = {"revenue_y5": f"Revenue, Year {config.PROJECTION_YEARS}", "ebitda_y5": f"EBITDA, Year {config.PROJECTION_YEARS}",
+              "fcff_y5": f"FCFF, Year {config.PROJECTION_YEARS}",
+              "gordon_ev": "Enterprise value (Gordon)", "gordon_value": "Value per share: Gordon growth",
+              "gordon_upside": "  vs current price", "exit_ev": "Enterprise value (exit multiple)",
+              "exit_value": "Value per share: exit multiple", "exit_upside": "  vs current price "}
+    shown = pd.DataFrame(index=[labels[k] for k in sc_results.index], columns=SC_COLS + ["Probability-weighted"],
+                         dtype=object)
+    for k in sc_results.index:
+        f = pct if "upside" in k else cur if k.endswith("_value") else money
+        shown.loc[labels[k]] = [("" if c == "weighted" and _missing(sc_results.loc[k, c]) and k not in
+                                 ("gordon_value", "exit_value", "gordon_upside", "exit_upside")
+                                 else f(sc_results.loc[k, c])) for c in list(config.SCENARIOS) + ["weighted"]]
+    st.dataframe(shown, width="stretch", height=rows_height(shown))
+    st.caption("Probability-weighted value = Bear x weight + Base x weight + Bull x weight, for each DCF method.")
+    if HAS_DCF:
+        st.plotly_chart(charts.scenario_chart(sc_results, price, f"{TARGET} scenarios: value per share", CCY),
                         width="stretch")
 
 

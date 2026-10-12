@@ -43,10 +43,11 @@ def dcf_range(run_kwargs: dict, method: str) -> dict:
 
 
 def football_field_data(companies: dict, run_kwargs: dict, target: str = None,
-                        peers: list = None, row_order: list = None) -> pd.DataFrame:
+                        peers: list = None, row_order: list = None, scenario_runs: dict = None) -> pd.DataFrame:
     """Rows in display order (top to bottom), as set in config.FOOTBALL_FIELD_ROWS.
     Columns: key, label, group, low, mid, high, basis (how the range was built,
-    for tooltips and the Excel export)."""
+    for tooltips and the Excel export), bear, bull (scenario values, DCF rows only,
+    from scenarios.run_scenarios(); the bar range itself is unchanged)."""
     target = target or config.TARGET
     peers = peers or config.PEERS
     row_order = list(row_order or config.FOOTBALL_FIELD_ROWS)
@@ -72,7 +73,7 @@ def football_field_data(companies: dict, run_kwargs: dict, target: str = None,
         row_order = [k for k in row_order if not k.startswith("dcf_")]
     if pd.isna(w):
         return pd.DataFrame([{"key": k, **rows[k]} for k in row_order if k in rows],
-                            columns=["key", "label", "group", "low", "mid", "high", "basis"])
+                            columns=["key", "label", "group", "low", "mid", "high", "basis", "bear", "bull"])
     rows["dcf_exit"] = {"label": "DCF: Exit multiple", "group": GROUPS["dcf"],
                         **dcf_range(run_kwargs, "exit"),
                         "basis": f"WACC {w - dw:.1%}-{w + dw:.1%}, exit EV/EBITDA "
@@ -83,8 +84,12 @@ def football_field_data(companies: dict, run_kwargs: dict, target: str = None,
                           "basis": f"WACC {w - dw:.1%}-{w + dw:.1%}, terminal growth "
                                    f"{g - config.FF_GROWTH_DELTA:.1%}-{g + config.FF_GROWTH_DELTA:.1%}; "
                                    f"base case WACC {w:.1%}, g {g:.1%}"}
+    if scenario_runs:
+        for key, method in [("dcf_exit", "exit"), ("dcf_gordon", "gordon")]:
+            for s in ("bear", "bull"):
+                rows[key][s] = scenario_runs[s]["result"][method]["value_per_share"]
     out = pd.DataFrame([{"key": k, **rows[k]} for k in row_order if k in rows],
-                       columns=["key", "label", "group", "low", "mid", "high", "basis"])
+                       columns=["key", "label", "group", "low", "mid", "high", "basis", "bear", "bull"])
     return out
 
 
@@ -114,6 +119,7 @@ def default_choices(data: dict, target: str = None) -> dict:
     a, wi, kw = d["run_kwargs"]["assumptions"], d["wacc_inputs"], d["run_kwargs"]
     return {
         "growth_start": a["revenue_growth"][0],
+        "growth_end": a["revenue_growth"][-1],          # = terminal growth by default
         "terminal_growth": kw["terminal_growth"],
         "margin_start": a["ebitda_margin"][0] if isinstance(a["ebitda_margin"], list) else a["ebitda_margin"],
         "margin_end": a["ebitda_margin"][-1] if isinstance(a["ebitda_margin"], list) else a["ebitda_margin"],
@@ -130,10 +136,12 @@ def default_choices(data: dict, target: str = None) -> dict:
 
 def assumptions_from_choices(choices: dict, years: int = None) -> dict:
     """Year-by-year assumptions. Revenue growth runs in a straight line from
-    growth_start to the terminal growth rate, the EBITDA margin from margin_start
-    to margin_end; the rest are flat. A per-year table, if given, wins."""
+    growth_start to growth_end (default: the terminal growth rate), the EBITDA
+    margin from margin_start to margin_end; the rest are flat. A per-year
+    table, if given, wins."""
     years = years or config.PROJECTION_YEARS
-    a = {"revenue_growth": dcf.growth_path(choices["growth_start"], choices["terminal_growth"], years),
+    growth_end = choices.get("growth_end", choices["terminal_growth"])
+    a = {"revenue_growth": dcf.growth_path(choices["growth_start"], growth_end, years),
          "ebitda_margin": dcf.growth_path(choices["margin_start"], choices["margin_end"], years)}
     a.update({k: [float(choices[k])] * years for k in SCALAR_ASSUMPTIONS})
     for k, values in (choices.get("per_year") or {}).items():

@@ -20,11 +20,13 @@ from openpyxl import Workbook
 from openpyxl.comments import Comment
 from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 from openpyxl.utils import get_column_letter
+from openpyxl.worksheet.datavalidation import DataValidation
 
 import comps
 import config
 import data_loader as dl
 import dcf
+import scenarios
 import summary
 
 M = 1e6   # money in the workbook is in millions
@@ -170,7 +172,14 @@ def _wacc_sheet(wb, model: dict, target: str, history_kd: float, ccy: str, rf_no
 # DCF sheet (live formulas)
 # ---------------------------------------------------------------------------
 
-def _dcf_sheet(wb, model: dict, target: str, ccy: str):
+# Scenarios sheet layout (rows): per-year inputs for each scenario in columns B/C/D
+SC_COLS = {"bear": "B", "base": "C", "bull": "D"}
+SC_GROWTH, SC_MARGIN, SC_CAPEX = 5, 10, 15            # first row of each 5-year block
+SC_TERMINAL, SC_EXIT, SC_WEIGHT, SC_WEIGHT_SUM = 20, 21, 22, 23
+SC_SWITCH = "$B$13"                                     # on the DCF sheet
+
+
+def _dcf_sheet(wb, model: dict, target: str, ccy: str, switch: int = 2):
     ws = wb.create_sheet("DCF")
     kw = model["run_kwargs"]
     years = config.PROJECTION_YEARS
@@ -187,8 +196,10 @@ def _dcf_sheet(wb, model: dict, target: str, ccy: str):
     _header(ws, 4, ["Inputs", "Value", "Note"])
     inputs = [
         (5, f"Base revenue (TTM, {ccy}m)", kw["base_revenue"] / M, FMT_MONEY, "Sum of the last 4 quarters"),
-        (6, "Terminal growth rate", kw["terminal_growth"], FMT_PCT, "Gordon growth, perpetual"),
-        (7, "Exit EV/EBITDA multiple", kw["exit_multiple"], FMT_MULT, "Default: peer median EV/EBITDA"),
+        (6, "Terminal growth rate", f"=INDEX(Scenarios!$B${SC_TERMINAL}:$D${SC_TERMINAL},1,{SC_SWITCH})",
+         FMT_PCT, "Selected scenario (Scenarios sheet)"),
+        (7, "Exit EV/EBITDA multiple", f"=INDEX(Scenarios!$B${SC_EXIT}:$D${SC_EXIT},1,{SC_SWITCH})",
+         FMT_MULT, "Selected scenario (Scenarios sheet)"),
         (8, f"Net debt ({ccy}m)", kw["net_debt"] / M, FMT_MONEY, "Debt excl. leases - cash"),
         (9, "Shares outstanding (m)", kw["shares"] / M, FMT_MONEY, "Yahoo"),
         (10, f"Current share price ({ccy})", kw["price"], price_format(ccy), "Yahoo"),
@@ -197,11 +208,21 @@ def _dcf_sheet(wb, model: dict, target: str, ccy: str):
     ]
     for r, label, value, fmt, note in inputs:
         _put(ws, r, 1, label)
-        _put(ws, r, 2, value, fmt, font=INPUT, fill=INPUT_FILL)
+        if isinstance(value, str) and value.startswith("="):
+            _put(ws, r, 2, value, fmt, font=LINK)
+        else:
+            _put(ws, r, 2, value, fmt, font=INPUT, fill=INPUT_FILL)
         _put(ws, r, 3, note, font=NOTE)
     _put(ws, 12, 1, "WACC")
     _put(ws, 12, 2, f"={WACC_CELL}", FMT_PCT, font=LINK)
     _put(ws, 12, 3, "From the WACC sheet", font=NOTE)
+    _put(ws, 13, 1, "Scenario (1 = Bear, 2 = Base, 3 = Bull)", bold=True)
+    _put(ws, 13, 2, switch, "0", font=INPUT, fill=INPUT_FILL, bold=True)
+    _put(ws, 13, 3, "Switch: growth, margin, capex, terminal growth and exit multiple follow it", font=NOTE)
+    dv = DataValidation(type="whole", operator="between", formula1="1", formula2="3", showErrorMessage=True,
+                        error="Enter 1 (Bear), 2 (Base) or 3 (Bull)")
+    ws.add_data_validation(dv)
+    dv.add("B13")
 
     # --- Assumptions per year (inputs) --------------------------------------
     _header(ws, 14, ["Assumptions", "TTM"] + [f"Year {i}" for i in range(1, years + 1)])
@@ -213,13 +234,19 @@ def _dcf_sheet(wb, model: dict, target: str, ccy: str):
         r = 16 + i
         arow[k] = r
         _put(ws, r, 1, dcf.ASSUMPTION_LABELS[k])
+        block = {"revenue_growth": SC_GROWTH, "ebitda_margin": SC_MARGIN, "capex_pct": SC_CAPEX}.get(k)
         for j, value in enumerate(assumptions[k]):
-            _put(ws, r, first + j, value, FMT_PCT, font=INPUT, fill=INPUT_FILL)
+            if block:   # scenario assumption: picked from the Scenarios sheet by the switch
+                sr = block + j
+                _put(ws, r, first + j, f"=INDEX(Scenarios!$B${sr}:$D${sr},1,{SC_SWITCH})", FMT_PCT, font=LINK)
+            else:       # shared by all scenarios
+                _put(ws, r, first + j, value, FMT_PCT, font=INPUT, fill=INPUT_FILL)
     ws.cell(row=arow["revenue_growth"], column=1).comment = Comment(
-        "Default: Year 1 = TTM revenue vs last fiscal year, straight line to the terminal growth rate.", "model")
+        "From the Scenarios sheet (selected scenario). Base default: Year 1 = TTM revenue vs last fiscal "
+        "year, straight line to the Year 5 growth (default = terminal growth).", "model")
     ws.cell(row=arow["ebitda_margin"], column=1).comment = Comment(
-        f"Default: Year 1 = TTM margin (one-offs removed), straight line to the last "
-        f"{config.DEFAULT_HISTORY_YEARS} fiscal years' average.", "model")
+        f"From the Scenarios sheet (selected scenario). Base default: Year 1 = TTM margin (one-offs removed), "
+        f"straight line to the last {config.DEFAULT_HISTORY_YEARS} fiscal years' average.", "model")
 
     # --- Projection (formulas) ----------------------------------------------
     top = 16 + len(ASSUMPTION_ROWS) + 1       # 23
@@ -314,11 +341,134 @@ def _dcf_sheet(wb, model: dict, target: str, ccy: str):
     return ws, v
 
 
+def _scenarios_sheet(wb, runs: dict, sc_defaults: dict, weights: dict, target: str, ccy: str):
+    """Inputs of the three scenarios (live: the DCF sheet reads the selected one),
+    and the three scenarios valued side by side with live formulas, so the
+    results update when any input changes - without touching the switch."""
+    ws = wb.create_sheet("Scenarios", 2)
+    years = config.PROJECTION_YEARS
+    col = get_column_letter
+    _title(ws, f"{target} - Scenarios (Bear / Base / Bull)",
+           "Blue cells on yellow are inputs. The DCF sheet uses the scenario chosen in its switch cell (B13); "
+           "the results below value all three at once. WACC, D&A, working capital and tax are shared (DCF sheet).")
+    _header(ws, 4, ["Scenario inputs", "Bear", "Base", "Bull", "Why (Bear / Bull default)"])
+    blocks = [("revenue_growth", SC_GROWTH, "Revenue growth", "growth_start"),
+              ("ebitda_margin", SC_MARGIN, "EBITDA margin", "margin_end"),
+              ("capex_pct", SC_CAPEX, "Capex (% of revenue)", "capex_pct")]
+    for key, row0, label, why in blocks:
+        for j in range(years):
+            _put(ws, row0 + j, 1, f"{label}, Year {j + 1}")
+            for sc, c in SC_COLS.items():
+                v = dcf._per_year(runs[sc]["run_kwargs"]["assumptions"][key], years)[j]
+                _put(ws, row0 + j, ord(c) - 64, v, FMT_PCT, font=INPUT, fill=INPUT_FILL)
+        _put(ws, row0, 5, sc_defaults["rationale"][why], font=NOTE)
+    for row, label, key, fmt, why in [(SC_TERMINAL, "Terminal growth", "terminal_growth", FMT_PCT, "terminal_growth"),
+                                      (SC_EXIT, "Exit EV/EBITDA", "exit_multiple", FMT_MULT, "exit_multiple")]:
+        _put(ws, row, 1, label)
+        for sc, c in SC_COLS.items():
+            _put(ws, row, ord(c) - 64, runs[sc]["run_kwargs"][key], fmt, font=INPUT, fill=INPUT_FILL)
+        _put(ws, row, 5, sc_defaults["rationale"][why], font=NOTE)
+    _put(ws, SC_WEIGHT, 1, "Probability weight")
+    for sc, c in SC_COLS.items():
+        _put(ws, SC_WEIGHT, ord(c) - 64, weights[sc], FMT_PCT, font=INPUT, fill=INPUT_FILL)
+    _put(ws, SC_WEIGHT_SUM, 1, "Sum of weights (must be 100%)")
+    _put(ws, SC_WEIGHT_SUM, 2, f"=SUM(B{SC_WEIGHT}:D{SC_WEIGHT})", FMT_PCT)
+
+    # --- Calculation blocks: one compact DCF per scenario -------------------------
+    calc0, size = 40, 20
+    D = "DCF!"
+    first, last = 3, 2 + years
+    L = col(last)
+    out = {}
+    for idx, (sc, scol) in enumerate(SC_COLS.items()):
+        b = calc0 + idx * size
+        _header(ws, b, [f"{config.SCENARIO_LABELS[sc]} calculation ({ccy}m)", "TTM"]
+                + [f"Year {i}" for i in range(1, years + 1)])
+        r = {name: b + 1 + i for i, name in enumerate(
+            ["revenue", "ebitda", "d_and_a", "ebit", "taxes", "nopat", "capex", "nwc", "fcff", "pv", "sum_pv",
+             "tv_g", "tv_x", "pv_tv_g", "pv_tv_x", "value_g", "value_x"])}
+        labels = {"revenue": "Revenue", "ebitda": "EBITDA", "d_and_a": "D&A", "ebit": "EBIT", "taxes": "Taxes on EBIT",
+                  "nopat": "NOPAT", "capex": "Capex", "nwc": "Increase in NWC", "fcff": "FCFF",
+                  "pv": "PV of FCFF (DCF discount factors)", "sum_pv": "Sum of PV of FCFF",
+                  "tv_g": "Terminal value: Gordon", "tv_x": "Terminal value: exit multiple",
+                  "pv_tv_g": "PV of terminal value: Gordon", "pv_tv_x": "PV of terminal value: exit multiple",
+                  "value_g": f"Value per share: Gordon ({ccy})", "value_x": f"Value per share: exit multiple ({ccy})"}
+        for name, row in r.items():
+            _put(ws, row, 1, labels[name], bold=name.startswith("value"))
+        _put(ws, r["revenue"], 2, f"={D}$B$5", FMT_MONEY, font=LINK)
+        for j in range(years):
+            c, prev = col(first + j), col(first + j - 1)
+            g, m, cx = f"${scol}${SC_GROWTH + j}", f"${scol}${SC_MARGIN + j}", f"${scol}${SC_CAPEX + j}"
+            cells = {
+                "revenue": f"={prev}{r['revenue']}*(1+{g})",
+                "ebitda": f"={c}{r['revenue']}*{m}",
+                "d_and_a": f"={c}{r['revenue']}*{D}{c}$18",
+                "ebit": f"={c}{r['ebitda']}-{c}{r['d_and_a']}",
+                "taxes": f"={c}{r['ebit']}*{D}{c}$21",
+                "nopat": f"={c}{r['ebit']}-{c}{r['taxes']}",
+                "capex": f"={c}{r['revenue']}*{cx}",
+                "nwc": f"={c}{r['revenue']}*{D}{c}$20",
+                "fcff": f"={c}{r['nopat']}+{c}{r['d_and_a']}-{c}{r['capex']}-{c}{r['nwc']}",
+                "pv": f"={c}{r['fcff']}*{D}{c}$34",
+            }
+            for name, formula in cells.items():
+                _put(ws, r[name], first + j, formula, FMT_MONEY)
+        tg, ex = f"${scol}${SC_TERMINAL}", f"${scol}${SC_EXIT}"
+        fcff_n, ebitda_n = f"{L}{r['fcff']}", f"{L}{r['ebitda']}"
+        singles = {
+            "sum_pv": (f"=SUM({col(first)}{r['pv']}:{L}{r['pv']})", FMT_MONEY),
+            "tv_g": (f"=IF({D}$B$12>{tg},{fcff_n}*(1+{tg})/({D}$B$12-{tg}),NA())", FMT_MONEY),
+            "tv_x": (f"={ebitda_n}*{ex}", FMT_MONEY),
+            "pv_tv_g": (f"=B{r['tv_g']}/(1+{D}$B$12)^{D}{L}$33", FMT_MONEY),
+            "pv_tv_x": (f"=B{r['tv_x']}/(1+{D}$B$12)^{D}{L}$15", FMT_MONEY),
+            "value_g": (f"=(B{r['sum_pv']}+B{r['pv_tv_g']}-{D}$B$8)/{D}$B$9", price_format(ccy)),
+            "value_x": (f"=(B{r['sum_pv']}+B{r['pv_tv_x']}-{D}$B$8)/{D}$B$9", price_format(ccy)),
+        }
+        for name, (formula, fmt) in singles.items():
+            _put(ws, r[name], 2, formula, fmt, bold=name.startswith("value"))
+        out[sc] = r
+
+    # --- Results side by side -------------------------------------------------------
+    top = 26
+    _header(ws, top, [f"Results ({ccy})", "Bear", "Base", "Bull", "Probability-weighted"])
+    res = [("Value per share: Gordon growth", "value_g", price_format(ccy)),
+           ("  vs current price", "up_g", FMT_PCT),
+           ("Value per share: exit multiple", "value_x", price_format(ccy)),
+           ("  vs current price", "up_x", FMT_PCT),
+           (f"Revenue, Year {years} ({ccy}m)", "revenue", FMT_MONEY),
+           (f"EBITDA, Year {years} ({ccy}m)", "ebitda", FMT_MONEY),
+           (f"FCFF, Year {years} ({ccy}m)", "fcff", FMT_MONEY)]
+    for i, (label, key, fmt) in enumerate(res, start=top + 1):
+        _put(ws, i, 1, label, bold=key.startswith("value"))
+        for sc, scol in SC_COLS.items():
+            r = out[sc]
+            if key in ("value_g", "value_x"):
+                f = f"=B{r[key]}"
+            elif key == "up_g":
+                f = f"=B{r['value_g']}/{D}$B$10-1"
+            elif key == "up_x":
+                f = f"=B{r['value_x']}/{D}$B$10-1"
+            else:
+                f = f"={L}{r[key]}"
+            _put(ws, i, ord(scol) - 64, f, fmt, bold=key.startswith("value"))
+        if key in ("value_g", "value_x"):
+            # Weights must add up to 100%, otherwise #N/A (never rescaled)
+            _put(ws, i, 5, f"=IF(ABS($B${SC_WEIGHT_SUM}-1)>0.000001,NA(),SUMPRODUCT($B${SC_WEIGHT}:$D${SC_WEIGHT},B{i}:D{i}))",
+                 fmt, bold=True)
+        elif key in ("up_g", "up_x"):
+            _put(ws, i, 5, f"=E{i - 1}/{D}$B$10-1", fmt)
+    _put(ws, top + len(res) + 2, 1, "Probability-weighted value = sum of each scenario's value x its weight; "
+                                    "#N/A until the weights add up to 100%.", font=NOTE)
+    _widths(ws, {"A": 40, "B": 14, "C": 14, "D": 14, "E": 16, "F": 13, "G": 13})
+    ws.column_dimensions["E"].width = 16
+    return ws
+
+
 # ---------------------------------------------------------------------------
 # Value sheets
 # ---------------------------------------------------------------------------
 
-def _summary_sheet(wb, data, model, ff, reverse, results, target, peers, ccy):
+def _summary_sheet(wb, data, model, ff, reverse, results, target, peers, ccy, sc_table=None):
     ws = wb.active
     ws.title = "Summary"
     v = data["companies"][target]["values"]
@@ -335,12 +485,12 @@ def _summary_sheet(wb, data, model, ff, reverse, results, target, peers, ccy):
     _put(ws, 7, 1, "WACC")
     _put(ws, 7, 2, model["wacc"]["wacc"], FMT_PCT)
 
-    _header(ws, 9, [f"Football field: value per share ({ccy})", "Low", "Mid", "High", "Basis"])
+    _header(ws, 9, [f"Football field: value per share ({ccy})", "Low", "Mid", "High", "Bear", "Bull", "Basis"])
     for i, (_, r) in enumerate(ff.iterrows(), start=10):
         _put(ws, i, 1, r["label"])
-        for j, k in enumerate(["low", "mid", "high"], start=2):
-            _put(ws, i, j, r[k], price_format(ccy))
-        _put(ws, i, 5, r["basis"], font=NOTE)
+        for j, k in enumerate(["low", "mid", "high", "bear", "bull"], start=2):
+            _put(ws, i, j, r.get(k), price_format(ccy))
+        _put(ws, i, 7, r["basis"], font=NOTE)
     row = 10 + len(ff) + 1
     pb_note = ("P/B is included because the target is a financial company." if summary.is_financial(data, target)
                else "P/B is not in the football field: see the note on the Comps sheet.")
@@ -368,9 +518,19 @@ def _summary_sheet(wb, data, model, ff, reverse, results, target, peers, ccy):
         _put(ws, i, 3, base, fmt)
     _put(ws, row + 4, 1, "Each line changes one input until the model value equals the current price.",
          font=NOTE)
-    for i, w in enumerate(results["warnings"], start=row + 6):
+    row += 6
+    if sc_table is not None:
+        _header(ws, row, ["Scenarios (values at export; live on the Scenarios sheet)", "Bear", "Base", "Bull",
+                          "Probability-weighted"])
+        for i, (label, key) in enumerate([("Value per share: Gordon growth", "gordon_value"),
+                                          ("Value per share: exit multiple", "exit_value")], start=row + 1):
+            _put(ws, i, 1, label)
+            for j, c in enumerate(list(config.SCENARIOS) + ["weighted"], start=2):
+                _put(ws, i, j, sc_table.loc[key, c], price_format(ccy))
+        row += 4
+    for i, w in enumerate(results["warnings"], start=row):
         _put(ws, i, 1, "Warning: " + w, font=NOTE)
-    _widths(ws, {"A": 44, "B": 14, "C": 14, "D": 14, "E": 80})
+    _widths(ws, {"A": 44, "B": 14, "C": 14, "D": 14, "E": 14, "F": 14, "G": 80})
 
 
 def _sensitivity_sheet(wb, tables, price, ccy):
@@ -508,20 +668,28 @@ def _history_sheet(wb, data, target, reference):
 # Public entry point
 # ---------------------------------------------------------------------------
 
-def build_workbook(data: dict, choices: dict, target: str = None, peers: list = None) -> bytes:
+def build_workbook(data: dict, choices: dict, target: str = None, peers: list = None,
+                   scenario_values: dict = None, weights: dict = None, scenario_switch: int = 2) -> bytes:
     """The full model as an .xlsx file (bytes), for st.download_button or a file.
-    `choices` are the app's inputs (summary.default_choices() for the defaults)."""
+    `choices` are the app's (Base) inputs (summary.default_choices() for the defaults);
+    `scenario_values` the Bear/Base/Bull values (scenarios.default_scenarios() if omitted);
+    `scenario_switch` the scenario the DCF sheet shows (1 Bear, 2 Base, 3 Bull)."""
     target = target or config.TARGET
     peers = peers if peers is not None else [t for t in data["companies"] if t != target]
     ccy = summary.target_currency(data, target)
     model = summary.build_model(data, choices, target)
     kw = model["run_kwargs"]
     results = dcf.run_dcf(**kw)
-    ff = summary.football_field_data(data["companies"], kw, target, peers)
     reverse = summary.reverse_dcf(kw)
     has_wacc = not pd.isna(kw["wacc_rate"])
     tables = dcf.sensitivity_tables(kw) if has_wacc else None
     defaults = dcf.default_inputs(data, target, peers)
+    sc_defaults = scenarios.default_scenarios(data, target, peers, choices)
+    scenario_values = scenario_values or {sc: sc_defaults[sc] for sc in config.SCENARIOS}
+    weights = weights or dict(config.SCENARIO_WEIGHTS)
+    runs = scenarios.run_scenarios(data, choices, scenario_values, target)
+    ff = summary.football_field_data(data["companies"], kw, target, peers, scenario_runs=runs if has_wacc else None)
+    sc_table = scenarios.results_table(runs, weights)
 
     rf = data["risk_free"]
     if pd.isna(model["wacc_inputs"]["risk_free"]):
@@ -532,8 +700,9 @@ def build_workbook(data: dict, choices: dict, target: str = None, peers: list = 
         rf_note = f"Yahoo {config.RISK_FREE_TICKERS.get(rf['currency'], '')}, {rf['date']}"
 
     wb = Workbook()
-    _summary_sheet(wb, data, model, ff, reverse, results, target, peers, ccy)
-    _dcf_sheet(wb, model, target, ccy)
+    _summary_sheet(wb, data, model, ff, reverse, results, target, peers, ccy, sc_table)
+    _dcf_sheet(wb, model, target, ccy, scenario_switch)
+    _scenarios_sheet(wb, runs, sc_defaults, weights, target, ccy)
     _wacc_sheet(wb, model, target, defaults["historical_cost_of_debt"], ccy, rf_note)
     if has_wacc:
         _sensitivity_sheet(wb, tables, kw["price"], ccy)

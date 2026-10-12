@@ -113,6 +113,21 @@ SENS_MULTIPLE_RANGE, SENS_MULTIPLE_STEP = 2.0, 1.0
 # Warn if the terminal value is more than this share of enterprise value
 TERMINAL_VALUE_WARNING = 0.75
 
+# --- Scenarios (Stage B) ----------------------------------------------------
+# Bear / Base / Bull differ in operating performance only; the WACC is the same
+# in all three (it measures risk, not performance).
+SCENARIOS = ["bear", "base", "bull"]
+SCENARIO_LABELS = {"bear": "Bear", "base": "Base", "bull": "Bull"}
+SCENARIO_WEIGHTS = {"bear": 0.25, "base": 0.50, "bull": 0.25}
+# Bear/Bull defaults move this share of the way from Base to the most extreme
+# historical value (0.5 = halfway). Moving all the way stacks every worst (best)
+# year at once, which is not realistic.
+SCENARIO_HALFWAY = 0.5
+SCENARIO_TERMINAL_STEP = 0.005     # terminal growth: Base -/+ 0.5 percentage points
+# Bull exit multiple at most this many times the target's own current EV/EBITDA:
+# assuming it trades like the group's most premium members in 5 years is too optimistic.
+BULL_EXIT_CAP_VS_OWN = 1.35
+
 # --- Football field (Stage 4) ----------------------------------------------
 # DCF bars span every combination of base WACC +/- FF_WACC_DELTA with terminal
 # growth +/- FF_GROWTH_DELTA (Gordon) or exit multiple +/- FF_MULTIPLE_DELTA (exit).

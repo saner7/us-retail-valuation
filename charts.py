@@ -97,6 +97,18 @@ def football_field(rows, current_price: float, title: str, currency: str = "USD"
         marker={"symbol": "line-ns", "size": 22, "line": {"width": 3, "color": INK}},
         hovertemplate=f"<b>%{{y}}</b><br>Mid {sym}%{{x:,.2f}}<extra></extra>",
     ))
+    # Bear / Bull scenario values on the DCF bars (the bar range itself is unchanged)
+    for col, name, symbol in (("bear", "Bear scenario", "triangle-left"), ("bull", "Bull scenario", "triangle-right")):
+        if col not in rows:
+            continue
+        pts = rows.dropna(subset=[col])
+        if pts.empty:
+            continue
+        fig.add_trace(go.Scatter(
+            name=name, x=pts[col], y=pts["label"], mode="markers",
+            marker={"symbol": symbol, "size": 13, "color": INK, "line": {"width": 2, "color": SURFACE}},
+            hovertemplate=f"<b>%{{y}}</b><br>{name} {sym}%{{x:,.2f}}<extra></extra>",
+        ))
     # Direct labels at both ends of each bar, in text ink (not the series color)
     for _, r in rows.iterrows():
         for x, anchor, shift in ((r["low"], "right", -6), (r["high"], "left", 6)):
@@ -109,7 +121,9 @@ def football_field(rows, current_price: float, title: str, currency: str = "USD"
                        font={"size": 12, "color": INK})
 
     plot_height = 40 + 52 * len(rows)
-    lo, hi = rows["low"].min(), rows["high"].max()
+    extra = [rows[c] for c in ("bear", "bull") if c in rows]
+    lo = min([rows["low"].min()] + [x.min() for x in extra if x.notna().any()])
+    hi = max([rows["high"].max()] + [x.max() for x in extra if x.notna().any()])
     pad = (hi - lo) * 0.12
     fig.update_layout(
         title={"text": title, "x": 0},
@@ -122,6 +136,46 @@ def football_field(rows, current_price: float, title: str, currency: str = "USD"
         legend={"orientation": "h", "yanchor": "top", "y": -70 / plot_height, "x": 0},
         plot_bgcolor=SURFACE, paper_bgcolor=SURFACE, font=FONT,
         margin={"l": 20, "r": 30, "t": 80, "b": 110}, height=190 + plot_height,
+        hoverlabel={"bgcolor": "white", "font": {"color": INK}},
+    )
+    return fig
+
+
+# Scenario chart: one categorical hue per valuation method (palette slots 1-2)
+METHOD_COLORS = {"Gordon growth": "#2a78d6", "Exit multiple": "#eb6834"}
+
+
+def scenario_chart(table, current_price: float, title: str, currency: str = "USD") -> go.Figure:
+    """Value per share by scenario (rows) for both DCF methods (dots), plus the
+    probability-weighted value, against the current price (dashed line).
+    `table` is scenarios.results_table()."""
+    sym = config.currency_symbol(currency)
+    rows = [("bear", "Bear"), ("base", "Base"), ("bull", "Bull"), ("weighted", "Probability-weighted")]
+    labels = [label for _, label in rows][::-1]          # Plotly draws bottom-up
+    fig = go.Figure()
+    for (method, color), key in zip(METHOD_COLORS.items(), ["gordon_value", "exit_value"]):
+        xs = [table.loc[key, col] for col, _ in rows]
+        fig.add_trace(go.Scatter(
+            name=method, x=xs, y=[label for _, label in rows], mode="markers+text",
+            marker={"size": 13, "color": color, "line": {"width": 2, "color": SURFACE}},
+            text=[("" if x != x else f"{sym}{x:,.0f}") for x in xs], textposition="top center",
+            textfont={"color": INK_SECONDARY, "size": 12},
+            hovertemplate=f"<b>%{{y}}</b><br>{method} {sym}%{{x:,.2f}}<extra></extra>",
+        ))
+    fig.add_vline(x=current_price, line={"color": INK, "width": 2, "dash": "dash"})
+    fig.add_annotation(x=current_price, y=1.0, yref="paper", yanchor="bottom",
+                       text=f"Current price {sym}{current_price:,.2f}", showarrow=False,
+                       font={"size": 12, "color": INK})
+    fig.update_layout(
+        title={"text": title, "x": 0},
+        xaxis={"title": f"Value per share ({currency})", "tickprefix": sym, "gridcolor": GRID,
+               "zeroline": False, "tickfont": {"color": MUTED}},
+        # Extra room above the top row so its value labels are not clipped
+        yaxis={"categoryorder": "array", "categoryarray": labels, "tickfont": {"color": INK}, "automargin": True,
+               "range": [-0.5, len(labels) - 0.2]},
+        legend={"orientation": "h", "yanchor": "top", "y": -0.25, "x": 0},
+        plot_bgcolor=SURFACE, paper_bgcolor=SURFACE, font=FONT,
+        margin={"l": 20, "r": 30, "t": 80, "b": 90}, height=400,
         hoverlabel={"bgcolor": "white", "font": {"color": INK}},
     )
     return fig

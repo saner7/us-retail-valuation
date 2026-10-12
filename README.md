@@ -115,6 +115,21 @@ summarises both in a "football field" chart, the way an investment banking pitch
   History) hold values from the moment of export. A test recalculates the workbook with
   LibreOffice and checks that Excel and Python agree to 9 significant digits.
 
+### Scenarios (Stage B)
+- **Bear / Base / Bull**, each with its own revenue growth path (Year 1 -> Year 5), EBITDA margin
+  path, capex, terminal growth and exit multiple. Base is the sidebar input. The WACC, D&A,
+  working capital and tax are shared: scenarios describe performance, the WACC describes risk.
+- **Default Bear / Bull** (all editable): halfway from Base to the most extreme year in the
+  company's own history (growth, Year 5 margin, capex), terminal growth -/+ 0.5 points, and an
+  exit multiple halfway between the peer median and the peer low / high. Moving all the way to
+  the historical extremes stacks every worst (best) year at once: for Target it gave a negative
+  Bear equity value. The Bull exit multiple is capped at 1.35x the target's own EV/EBITDA,
+  because assuming it trades like the group's most premium members (Walmart, Costco) within
+  five years is too optimistic.
+- **Probability-weighted value** (default 25% / 50% / 25%): N/A unless the weights add up to 100%.
+- Excel: a switch cell on the DCF sheet (1 = Bear, 2 = Base, 3 = Bull) drives the DCF through
+  `INDEX`, and a Scenarios sheet values all three side by side with live formulas.
+
 ### Data quality checks
 Missing fields, zero or negative EBITDA, losses (P/E excluded), negative equity, price outside
 the 52-week range, price × shares vs market cap, our EV vs Yahoo's EV, reporting currency,

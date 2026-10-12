@@ -51,7 +51,7 @@ def test_app_runs_and_shows_the_model_result(app):
     r = dcf.run_dcf(**summary.build_model(data, summary.default_choices(data))["run_kwargs"])
     assert metric(at, "DCF: Gordon growth").value == f"${r['gordon']['value_per_share']:,.2f}"
     assert metric(at, "WACC (Gordon)").value.endswith("%")          # reverse DCF box is there
-    assert [t.label for t in at.tabs] == ["Summary", "DCF", "Comps", "Data & quality"]
+    assert [t.label for t in at.tabs] == ["Summary", "DCF", "Scenarios", "Comps", "Data & quality"]
 
 
 def test_changing_an_input_changes_the_value(app):
@@ -93,3 +93,12 @@ def test_euro_company_without_risk_free_rate(app):
     at.number_input(key="in_risk_free").set_value(2.5).run()
     assert not at.exception
     assert metric(at, "DCF: Gordon growth").value.startswith("€")
+
+
+def test_scenarios_tab_and_weights_check(app):
+    at = app
+    assert not at.exception
+    assert any("WACC is the same in all three" in m.value for m in at.markdown)
+    at.number_input(key="w_bull").set_value(40.0).run()          # 25 + 50 + 40 = 115%
+    assert not at.exception
+    assert any("add up to 115.0%" in w.value for w in at.warning)

@@ -13,7 +13,8 @@ import export
 import summary
 from fake_data import make_data
 
-SHEETS = ["Summary", "DCF", "WACC", "Sensitivity", "Comps", "Bridge", "Market data", "Data quality", "History"]
+SHEETS = ["Summary", "DCF", "Scenarios", "WACC", "Sensitivity", "Comps", "Bridge", "Market data", "Data quality",
+          "History"]
 
 
 @pytest.fixture(scope="module")
@@ -32,7 +33,7 @@ def test_sheets_and_which_ones_have_formulas(data):
     assert wb.sheetnames == SHEETS
     for ws in wb.worksheets:
         formulas = [c for row in ws.iter_rows() for c in row if c.data_type == "f"]
-        if ws.title in ("DCF", "WACC"):
+        if ws.title in ("DCF", "WACC", "Scenarios"):
             assert formulas, f"{ws.title} should use live formulas"
         else:
             assert not formulas, f"{ws.title} should hold values only"
