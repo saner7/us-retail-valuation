@@ -1,0 +1,507 @@
+# Source: https://en.wikipedia.org/wiki/List_of_S%26P_500_companies (revision 1379247819)
+# Downloaded: 2026-10-13; market caps: Yahoo Finance marketCap, 2026-10-13
+# GICS classifications are maintained by MSCI and S&P; this list is taken from Wikipedia for educational use.
+ticker,yahoo_ticker,name,gics_sector,gics_sub_industry,headquarters,cik,share_classes,market_cap,market_cap_date
+MMM,MMM,3M,Industrials,Industrial Conglomerates,"Saint Paul, Minnesota",0000066740,,82974580736.0,2026-10-13
+AOS,AOS,A. O. Smith,Industrials,Building Products,"Milwaukee, Wisconsin",0000091142,,7692425216.0,2026-10-13
+ABT,ABT,Abbott Laboratories,Health Care,Health Care Equipment,"North Chicago, Illinois",0000001800,,176187637760.0,2026-10-13
+ABBV,ABBV,AbbVie,Health Care,Biotechnology,"North Chicago, Illinois",0001551152,,496772022272.0,2026-10-13
+ACN,ACN,Accenture,Information Technology,IT Consulting & Other Services,"Dublin, Ireland",0001467373,,131487989760.0,2026-10-13
+ADBE,ADBE,Adobe Inc.,Information Technology,Application Software,"San Jose, California",0000796343,,92684091392.0,2026-10-13
+AMD,AMD,Advanced Micro Devices,Information Technology,Semiconductors,"Santa Clara, California",0000002488,,970081959936.0,2026-10-13
+AES,AES,AES Corporation,Utilities,Independent Power Producers & Energy Traders,"Arlington, Virginia",0000874761,,10687310848.0,2026-10-13
+AFL,AFL,Aflac,Financials,Life & Health Insurance,"Columbus, Georgia",0000004977,,58100674560.0,2026-10-13
+A,A,Agilent Technologies,Health Care,Life Sciences Tools & Services,"Santa Clara, California",0001090872,,48309207040.0,2026-10-13
+APD,APD,Air Products,Materials,Industrial Gases,"Upper Macungie Township, Pennsylvania",0000002969,,63213740032.0,2026-10-13
+ABNB,ABNB,Airbnb,Consumer Discretionary,"Hotels, Resorts & Cruise Lines","San Francisco, California",0001559720,,97901453312.0,2026-10-13
+AKAM,AKAM,Akamai Technologies,Information Technology,Internet Services & Infrastructure,"Cambridge, Massachusetts",0001086222,,14608793600.0,2026-10-13
+ALB,ALB,Albemarle Corporation,Materials,Specialty Chemicals,"Charlotte, North Carolina",0000915913,,11624678400.0,2026-10-13
+ARE,ARE,Alexandria Real Estate Equities,Real Estate,Office REITs,"Pasadena, California",0001035443,,7592843776.0,2026-10-13
+ALGN,ALGN,Align Technology,Health Care,Health Care Supplies,"Tempe, Arizona",0001097149,,9975416832.0,2026-10-13
+ALLE,ALLE,Allegion,Industrials,Building Products,"Dublin, Ireland",0001579241,,12758918144.0,2026-10-13
+LNT,LNT,Alliant Energy,Utilities,Electric Utilities,"Madison, Wisconsin",0000352541,,17232060416.0,2026-10-13
+ALL,ALL,Allstate,Financials,Property & Casualty Insurance,"Northbrook, Illinois",0000899051,,58814763008.0,2026-10-13
+GOOGL,GOOGL,Alphabet Inc. (Class A),Communication Services,Interactive Media & Services,"Mountain View, California",0001652044,GOOG,4313742835712.0,2026-10-13
+GOOG,GOOG,Alphabet Inc. (Class C),Communication Services,Interactive Media & Services,"Mountain View, California",0001652044,GOOGL,4267880480768.0,2026-10-13
+MO,MO,Altria,Consumer Staples,Tobacco,"Richmond, Virginia",0000764180,,119653851136.0,2026-10-13
+AMZN,AMZN,Amazon,Consumer Discretionary,Broadline Retail,"Seattle, Washington",0001018724,,2799371812864.0,2026-10-13
+AMCR,AMCR,Amcor,Materials,Paper & Plastic Packaging Products & Materials,"Warmley, Bristol, United Kingdom",0001748790,,19207702528.0,2026-10-13
+AEE,AEE,Ameren,Utilities,Multi-Utilities,"St. Louis, Missouri",0001002910,,28581298176.0,2026-10-13
+AEP,AEP,American Electric Power,Utilities,Electric Utilities,"Columbus, Ohio",0000004904,,67630489600.0,2026-10-13
+AXP,AXP,American Express,Financials,Consumer Finance,"New York City, New York",0000004962,,210379276288.0,2026-10-13
+AIG,AIG,American International Group,Financials,Multi-line Insurance,"New York City, New York",0000005272,,40628797440.0,2026-10-13
+AMT,AMT,American Tower,Real Estate,Telecom Tower REITs,"Boston, Massachusetts",0001053507,,85065670656.0,2026-10-13
+AWK,AWK,American Water Works,Utilities,Water Utilities,"Camden, New Jersey",0001410636,,25745342464.0,2026-10-13
+AMP,AMP,Ameriprise Financial,Financials,Asset Management & Custody Banks,"Minneapolis, Minnesota",0000820027,,44168372224.0,2026-10-13
+AME,AME,Ametek,Industrials,Electrical Components & Equipment,"Berwyn, Pennsylvania",0001037868,,57290092544.0,2026-10-13
+AMGN,AMGN,Amgen,Health Care,Biotechnology,"Thousand Oaks, California",0000318154,,225751711744.0,2026-10-13
+APH,APH,Amphenol,Information Technology,Electronic Components,"Wallingford, Connecticut",0000820313,,212541685760.0,2026-10-13
+ADI,ADI,Analog Devices,Information Technology,Semiconductors,"Wilmington, Massachusetts",0000006281,,196852301824.0,2026-10-13
+AON,AON,Aon plc,Financials,Insurance Brokers,"London, United Kingdom",0000315293,,58287828992.0,2026-10-13
+APA,APA,APA Corporation,Energy,Oil & Gas Exploration & Production,"Houston, Texas",0001841666,,16410465280.0,2026-10-13
+APO,APO,Apollo Global Management,Financials,Asset Management & Custody Banks,"New York City, New York",0001858681,,70404554752.0,2026-10-13
+AAPL,AAPL,Apple Inc.,Information Technology,"Technology Hardware, Storage & Peripherals","Cupertino, California",0000320193,,4976177840128.0,2026-10-13
+AMAT,AMAT,Applied Materials,Information Technology,Semiconductor Materials & Equipment,"Santa Clara, California",0000006951,,394838540288.0,2026-10-13
+APP,APP,AppLovin,Communication Services,Advertising,"Palo Alto, California",0001751008,,90995933184.0,2026-10-13
+APTV,APTV,Aptiv,Consumer Discretionary,Automotive Parts & Equipment,"Schaffhausen, Switzerland",0001521332,,9042430976.0,2026-10-13
+ACGL,ACGL,Arch Capital Group,Financials,Property & Casualty Insurance,"Hamilton, Bermuda",0000947484,,33153822720.0,2026-10-13
+ADM,ADM,Archer Daniels Midland,Consumer Staples,Agricultural Products & Services,"Chicago, Illinois",0000007084,,38759190528.0,2026-10-13
+ARES,ARES,Ares Management,Financials,Asset Management & Custody Banks,"Los Angeles, California",0001176948,,39199326208.0,2026-10-13
+ANET,ANET,Arista Networks,Information Technology,Communications Equipment,"Santa Clara, California",0001596532,,265967075328.0,2026-10-13
+AJG,AJG,Arthur J. Gallagher & Co.,Financials,Insurance Brokers,"Rolling Meadows, Illinois",0000354190,,59963285504.0,2026-10-13
+AIZ,AIZ,Assurant,Financials,Multi-line Insurance,"Atlanta, Georgia",0001267238,,13249844224.0,2026-10-13
+T,T,AT&T,Communication Services,Integrated Telecommunication Services,"Dallas, Texas",0000732717,,154110148608.0,2026-10-13
+ATO,ATO,Atmos Energy,Utilities,Gas Utilities,"Dallas, Texas",0000731802,,27440363520.0,2026-10-13
+ADSK,ADSK,Autodesk,Information Technology,Application Software,"San Francisco, California",0000769397,,48809857024.0,2026-10-13
+ADP,ADP,Automatic Data Processing,Industrials,Human Resource & Employment Services,"Roseland, New Jersey",0000008670,,108497633280.0,2026-10-13
+AZO,AZO,AutoZone,Consumer Discretionary,Automotive Retail,"Memphis, Tennessee",0000866787,,46883102720.0,2026-10-13
+AVY,AVY,Avery Dennison,Materials,Paper & Plastic Packaging Products & Materials,"Mentor, Ohio",0000008818,,12705882112.0,2026-10-13
+AXON,AXON,Axon Enterprise,Industrials,Aerospace & Defense,"Scottsdale, Arizona",0001069183,,33667221504.0,2026-10-13
+BKR,BKR,Baker Hughes,Energy,Oil & Gas Equipment & Services,"Houston, Texas",0001701605,,55768428544.0,2026-10-13
+BALL,BALL,Ball Corporation,Materials,"Metal, Glass & Plastic Containers","Broomfield, Colorado",0000009389,,15667791872.0,2026-10-13
+BAC,BAC,Bank of America,Financials,Diversified Banks,"Charlotte, North Carolina",0000070858,,381664231424.0,2026-10-13
+BAX,BAX,Baxter International,Health Care,Health Care Equipment,"Deerfield, Illinois",0000010456,,12811161600.0,2026-10-13
+BDX,BDX,Becton Dickinson,Health Care,Health Care Equipment,"Franklin Lakes, New Jersey",0000010795,,51451146240.0,2026-10-13
+BRK.B,BRK-B,Berkshire Hathaway,Financials,Multi-Sector Holdings,"Omaha, Nebraska",0001067983,,1108031307776.0,2026-10-13
+BBY,BBY,Best Buy,Consumer Discretionary,Computer & Electronics Retail,"Richfield, Minnesota",0000764478,,18244212736.0,2026-10-13
+TECH,TECH,Bio-Techne,Health Care,Life Sciences Tools & Services,"Minneapolis, Minnesota",0000842023,,11378731008.0,2026-10-13
+BIIB,BIIB,Biogen,Health Care,Biotechnology,"Cambridge, Massachusetts",0000875045,,33896245248.0,2026-10-13
+BLK,BLK,BlackRock,Financials,Asset Management & Custody Banks,"New York City, New York",0002012383,,176111206400.0,2026-10-13
+BX,BX,Blackstone Inc.,Financials,Asset Management & Custody Banks,"New York City, New York",0001393818,,137196281856.0,2026-10-13
+XYZ,XYZ,"Block, Inc.",Financials,Transaction & Payment Processing Services,none,0001512673,,46153072640.0,2026-10-13
+BE,BE,Bloom Energy,Industrials,Electrical Components & Equipment,"San Jose, California",0001664703,,77248634880.0,2026-10-13
+BNY,BNY,BNY Mellon,Financials,Asset Management & Custody Banks,"New York City, New York",0001390777,,96924319744.0,2026-10-13
+BA,BA,Boeing,Industrials,Aerospace & Defense,"Arlington, Virginia",0000012927,,149775122432.0,2026-10-13
+BKNG,BKNG,Booking Holdings,Consumer Discretionary,"Hotels, Resorts & Cruise Lines","Norwalk, Connecticut",0001075531,,119041204224.0,2026-10-13
+BSX,BSX,Boston Scientific,Health Care,Health Care Equipment,"Marlborough, Massachusetts",0000885725,,63534223360.0,2026-10-13
+BMY,BMY,Bristol Myers Squibb,Health Care,Pharmaceuticals,"New York City, New York",0000014272,,117619515392.0,2026-10-13
+AVGO,AVGO,Broadcom,Information Technology,Semiconductors,"Palo Alto, California",0001730168,,1693349838848.0,2026-10-13
+BR,BR,Broadridge Financial Solutions,Industrials,Data Processing & Outsourced Services,"Lake Success, New York",0001383312,,18787694592.0,2026-10-13
+BRO,BRO,Brown & Brown,Financials,Insurance Brokers,"Daytona Beach, Florida",0000079282,,21297950720.0,2026-10-13
+BF.B,BF-B,Brown–Forman,Consumer Staples,Distillers & Vintners,"Louisville, Kentucky",0000014693,,12302150656.0,2026-10-13
+BG,BG,Bunge Global,Consumer Staples,Agricultural Products & Services,"Chesterfield, Missouri",0001996862,,20022654976.0,2026-10-13
+BXP,BXP,"BXP, Inc.",Real Estate,Office REITs,"Boston, Massachusetts",0001037540,,10771250176.0,2026-10-13
+CHRW,CHRW,C.H. Robinson,Industrials,Air Freight & Logistics,"Eden Prairie, Minnesota",0001043277,,16301620224.0,2026-10-13
+CDNS,CDNS,Cadence Design Systems,Information Technology,Application Software,"San Jose, California",0000813672,,95952429056.0,2026-10-13
+CPT,CPT,Camden Property Trust,Real Estate,Multi-Family Residential REITs,"Houston, Texas",0000906345,,11295499264.0,2026-10-13
+COF,COF,Capital One,Financials,Consumer Finance,"Tysons Corner, Virginia",0000927628,,123396341760.0,2026-10-13
+CAH,CAH,Cardinal Health,Health Care,Health Care Distributors,"Dublin, Ohio",0000721371,,55129649152.0,2026-10-13
+CCL,CCL,Carnival Corporation,Consumer Discretionary,"Hotels, Resorts & Cruise Lines","Miami, Florida",0000815097,,35605278720.0,2026-10-13
+CARR,CARR,Carrier Global,Industrials,Building Products,"Palm Beach Gardens, Florida",0001783180,,45684092928.0,2026-10-13
+CVNA,CVNA,Carvana,Consumer Discretionary,Automotive Retail,"Tempe, Arizona",0001690820,,65964675072.0,2026-10-13
+CASY,CASY,Casey's,Consumer Staples,Food Retail,"Ankeny, Iowa",0000726958,,23865919488.0,2026-10-13
+CAT,CAT,Caterpillar Inc.,Industrials,Construction Machinery & Heavy Transportation Equipment,"Irving, Texas",0000018230,,367450292224.0,2026-10-13
+CBOE,CBOE,Cboe Global Markets,Financials,Financial Exchanges & Data,"Chicago, Illinois",0001374310,,31055695872.0,2026-10-13
+CBRE,CBRE,CBRE Group,Real Estate,Real Estate Services,"Dallas, Texas",0001138118,,37850390528.0,2026-10-13
+CDW,CDW,CDW Corporation,Information Technology,Technology Distributors,"Vernon Hills, Illinois",0001402057,,17972504576.0,2026-10-13
+COR,COR,Cencora,Health Care,Health Care Distributors,"Conshohocken, Pennsylvania",0001140859,,62030278656.0,2026-10-13
+CNC,CNC,Centene Corporation,Health Care,Managed Health Care,"St. Louis, Missouri",0001071739,,33107544064.0,2026-10-13
+CNP,CNP,CenterPoint Energy,Utilities,Multi-Utilities,"Houston, Texas",0001130310,,25709850624.0,2026-10-13
+CF,CF,CF Industries,Materials,Fertilizers & Agricultural Chemicals,"Deerfield, Illinois",0001324404,,17340323840.0,2026-10-13
+CRL,CRL,Charles River Laboratories,Health Care,Life Sciences Tools & Services,"Wilmington, Massachusetts",0001100682,,14539910144.0,2026-10-13
+SCHW,SCHW,Charles Schwab Corporation,Financials,Investment Banking & Brokerage,"Westlake, Texas",0000316709,,167849312256.0,2026-10-13
+CHTR,CHTR,Charter Communications,Communication Services,Cable & Satellite,"Stamford, Connecticut",0001091667,,13318054912.0,2026-10-13
+CVX,CVX,Chevron Corporation,Energy,Integrated Oil & Gas,"Houston, Texas",0000093410,,421744705536.0,2026-10-13
+CMG,CMG,Chipotle Mexican Grill,Consumer Discretionary,Restaurants,"Newport Beach, California",0001058090,,38468706304.0,2026-10-13
+CB,CB,Chubb Limited,Financials,Property & Casualty Insurance,"Zurich, Switzerland",0000896159,,133124104192.0,2026-10-13
+CHD,CHD,Church & Dwight,Consumer Staples,Household Products,"Ewing, New Jersey",0000313927,,23689553920.0,2026-10-13
+CIEN,CIEN,Ciena,Information Technology,Communications Equipment,"Hanover, Maryland",0000936395,,57433874432.0,2026-10-13
+CI,CI,Cigna,Health Care,Health Care Services,"Bloomfield, Connecticut",0001739940,,74869899264.0,2026-10-13
+CINF,CINF,Cincinnati Financial,Financials,Property & Casualty Insurance,"Fairfield, Ohio",0000020286,,25408290816.0,2026-10-13
+CTAS,CTAS,Cintas,Industrials,Diversified Support Services,"Mason, Ohio",0000723254,,81491722240.0,2026-10-13
+CSCO,CSCO,Cisco,Information Technology,Communications Equipment,"San Jose, California",0000858877,,454737952768.0,2026-10-13
+C,C,Citigroup,Financials,Diversified Banks,"New York City, New York",0000831001,,221287464960.0,2026-10-13
+CFG,CFG,Citizens Financial Group,Financials,Regional Banks,"Providence, Rhode Island",0000759944,,26913198080.0,2026-10-13
+CLX,CLX,Clorox,Consumer Staples,Household Products,"Oakland, California",0000021076,,10201136128.0,2026-10-13
+CME,CME,CME Group,Financials,Financial Exchanges & Data,"Chicago, Illinois",0001156375,,99689750528.0,2026-10-13
+CMS,CMS,CMS Energy,Utilities,Multi-Utilities,"Jackson, Michigan",0000811156,,20652191744.0,2026-10-13
+KO,KO,Coca-Cola Company (The),Consumer Staples,Soft Drinks & Non-alcoholic Beverages,"Atlanta, Georgia",0000021344,,386325872640.0,2026-10-13
+CTSH,CTSH,Cognizant,Information Technology,IT Consulting & Other Services,"Teaneck, New Jersey",0001058290,,26882510848.0,2026-10-13
+COHR,COHR,Coherent Corp.,Information Technology,Electronic Components,"Saxonburg, Pennsylvania",0000820318,,56720113664.0,2026-10-13
+COIN,COIN,Coinbase,Financials,Financial Exchanges & Data,"New York City, New York",0001679788,,47593541632.0,2026-10-13
+CL,CL,Colgate-Palmolive,Consumer Staples,Household Products,"New York City, New York",0000021665,,71729610752.0,2026-10-13
+CMCSA,CMCSA,Comcast,Communication Services,Cable & Satellite,"Philadelphia, Pennsylvania",0001166691,,73385803776.0,2026-10-13
+FIX,FIX,Comfort Systems USA,Industrials,Construction & Engineering,"Houston, Texas",0001035983,,57650069504.0,2026-10-13
+COP,COP,ConocoPhillips,Energy,Oil & Gas Exploration & Production,"Houston, Texas",0001163165,,165255987200.0,2026-10-13
+ED,ED,Consolidated Edison,Utilities,Multi-Utilities,"New York City, New York",0001047862,,39645630464.0,2026-10-13
+STZ,STZ,Constellation Brands,Consumer Staples,Distillers & Vintners,"Rochester, New York",0000016918,,21389942784.0,2026-10-13
+CEG,CEG,Constellation Energy,Utilities,Electric Utilities,"Baltimore, Maryland",0001868275,,104127406080.0,2026-10-13
+COO,COO,Cooper Companies (The),Health Care,Health Care Supplies,"San Ramon, California",0000711404,,10562176000.0,2026-10-13
+CPRT,CPRT,Copart,Industrials,Diversified Support Services,"Dallas, Texas",0000900075,,24529229824.0,2026-10-13
+GLW,GLW,Corning Inc.,Information Technology,Electronic Components,"Corning, New York",0000024741,,126865276928.0,2026-10-13
+CPAY,CPAY,Corpay,Financials,Transaction & Payment Processing Services,"Atlanta, Georgia",0001175454,,26110853120.0,2026-10-13
+CSGP,CSGP,CoStar Group,Real Estate,Real Estate Services,"Washington, D.C.",0001057352,,11835821056.0,2026-10-13
+COST,COST,Costco,Consumer Staples,Consumer Staples Merchandise Retail,"Issaquah, Washington",0000909832,,425156018176.0,2026-10-13
+CRH,CRH,CRH plc,Materials,Construction Materials,"Dublin, Ireland",0000849395,,53921308672.0,2026-10-13
+CRWD,CRWD,CrowdStrike,Information Technology,Systems Software,"Austin, Texas",0001535527,,269305118720.0,2026-10-13
+CCI,CCI,Crown Castle,Real Estate,Telecom Tower REITs,"Houston, Texas",0001051470,,35401371648.0,2026-10-13
+CSX,CSX,CSX Corporation,Industrials,Rail Transportation,"Jacksonville, Florida",0000277948,,88455675904.0,2026-10-13
+CMI,CMI,Cummins,Industrials,Construction Machinery & Heavy Transportation Equipment,"Columbus, Indiana",0000026172,,72667570176.0,2026-10-13
+CVS,CVS,CVS Health,Health Care,Health Care Services,"Woonsocket, Rhode Island",0000064803,,112216858624.0,2026-10-13
+DHR,DHR,Danaher Corporation,Health Care,Life Sciences Tools & Services,"Washington, D.C.",0000313616,,155500511232.0,2026-10-13
+DRI,DRI,Darden Restaurants,Consumer Discretionary,Restaurants,"Orlando, Florida",0000940944,,22584518656.0,2026-10-13
+DDOG,DDOG,Datadog,Information Technology,Application Software,"New York City, New York",0001561550,,103158661120.0,2026-10-13
+DVA,DVA,DaVita,Health Care,Health Care Services,"Denver, Colorado",0000927066,,11597563904.0,2026-10-13
+DECK,DECK,Deckers Brands,Consumer Discretionary,Footwear,"Goleta, California",0000910521,,11476044800.0,2026-10-13
+DE,DE,Deere & Company,Industrials,Agricultural & Farm Machinery,"Moline, Illinois",0000315189,,170567729152.0,2026-10-13
+DELL,DELL,Dell Technologies,Information Technology,"Technology Hardware, Storage & Peripherals","Round Rock, Texas",0001571996,,366711373824.0,2026-10-13
+DAL,DAL,Delta Air Lines,Industrials,Passenger Airlines,"Atlanta, Georgia",0000027904,,52682182656.0,2026-10-13
+DVN,DVN,Devon Energy,Energy,Oil & Gas Exploration & Production,"Oklahoma City, Oklahoma",0001090012,,53855997952.0,2026-10-13
+DXCM,DXCM,Dexcom,Health Care,Health Care Equipment,"San Diego, California",0001093557,,32422836224.0,2026-10-13
+FANG,FANG,Diamondback Energy,Energy,Oil & Gas Exploration & Production,"Midland, Texas",0001539838,,54634659840.0,2026-10-13
+DLR,DLR,Digital Realty,Real Estate,Data Center REITs,"Austin, Texas",0001297996,,68039897088.0,2026-10-13
+DG,DG,Dollar General,Consumer Staples,Consumer Staples Merchandise Retail,"Goodlettsville, Tennessee",0000029534,,27916847104.0,2026-10-13
+DLTR,DLTR,Dollar Tree,Consumer Staples,Consumer Staples Merchandise Retail,"Chesapeake, Virginia",0000935703,,22067200000.0,2026-10-13
+D,D,Dominion Energy,Utilities,Multi-Utilities,"Richmond, Virginia",0000715957,,54926397440.0,2026-10-13
+DPZ,DPZ,Domino's,Consumer Discretionary,Restaurants,"Ann Arbor, Michigan",0001286681,,10285111296.0,2026-10-13
+DASH,DASH,DoorDash,Consumer Discretionary,Specialized Consumer Services,"San Francisco, California",0001792789,,84163796992.0,2026-10-13
+DOV,DOV,Dover Corporation,Industrials,Industrial Machinery & Supplies & Components,"Downers Grove, Illinois",0000029905,,25707761664.0,2026-10-13
+DOW,DOW,Dow Inc.,Materials,Commodity Chemicals,"Midland, Michigan",0001751788,,20312221696.0,2026-10-13
+DHI,DHI,D. R. Horton,Consumer Discretionary,Homebuilding,"Arlington, Texas",0000882184,,37561081856.0,2026-10-13
+DTE,DTE,DTE Energy,Utilities,Multi-Utilities,"Detroit, Michigan",0000936340,,26645678080.0,2026-10-13
+DUK,DUK,Duke Energy,Utilities,Electric Utilities,"Charlotte, North Carolina",0001326160,,91763154944.0,2026-10-13
+DD,DD,DuPont,Industrials,Industrial Conglomerates,"Wilmington, Delaware",0001666700,,17470509056.0,2026-10-13
+ETN,ETN,Eaton Corporation,Industrials,Electrical Components & Equipment,"Dublin, Ireland",0001551182,,165726404608.0,2026-10-13
+EBAY,EBAY,eBay Inc.,Consumer Discretionary,Broadline Retail,"San Jose, California",0001065088,,51019251712.0,2026-10-13
+ECHO,ECHO,EchoStar,Communication Services,Wireless Telecommunication Services,"Englewood, Colorado",0001415404,,27656585216.0,2026-10-13
+ECL,ECL,Ecolab,Materials,Specialty Chemicals,"Saint Paul, Minnesota",0000031462,,79697420288.0,2026-10-13
+EIX,EIX,Edison International,Utilities,Electric Utilities,"Rosemead, California",0000827052,,21411049472.0,2026-10-13
+EW,EW,Edwards Lifesciences,Health Care,Health Care Equipment,"Irvine, California",0001099800,,49795194880.0,2026-10-13
+ELV,ELV,Elevance Health,Health Care,Managed Health Care,"Indianapolis, Indiana",0001156039,,91538358272.0,2026-10-13
+EME,EME,Emcor,Industrials,Construction & Engineering,"Norwalk, Connecticut",0000105634,,34368667648.0,2026-10-13
+EMR,EMR,Emerson Electric,Industrials,Electrical Components & Equipment,"Ferguson, Missouri",0000032604,,90620190720.0,2026-10-13
+ETR,ETR,Entergy,Utilities,Electric Utilities,"New Orleans, Louisiana",0000065984,,49684078592.0,2026-10-13
+EOG,EOG,EOG Resources,Energy,Oil & Gas Exploration & Production,"Houston, Texas",0000821189,,78946885632.0,2026-10-13
+EQT,EQT,EQT Corporation,Energy,Oil & Gas Exploration & Production,"Pittsburgh, Pennsylvania",0000033213,,33289963520.0,2026-10-13
+EFX,EFX,Equifax,Industrials,Research & Consulting Services,"Atlanta, Georgia",0000033185,,17309050880.0,2026-10-13
+EQIX,EQIX,Equinix,Real Estate,Data Center REITs,"Redwood City, California",0001101239,,101888385024.0,2026-10-13
+ERIE,ERIE,Erie Indemnity,Financials,Insurance Brokers,"Erie, Pennsylvania",0000922621,,11768357888.0,2026-10-13
+ESS,ESS,Essex Property Trust,Real Estate,Multi-Family Residential REITs,"San Mateo, California",0000920522,,18638764032.0,2026-10-13
+EL,EL,Estée Lauder Companies (The),Consumer Staples,Personal Care Products,"New York City, New York",0001001250,,36246769664.0,2026-10-13
+EG,EG,Everest Group,Financials,Reinsurance,"Hamilton, Bermuda",0001095073,,14283819008.0,2026-10-13
+EVRG,EVRG,Evergy,Utilities,Electric Utilities,"Kansas City, Missouri",0001711269,,18791223296.0,2026-10-13
+P,P,Everpure,Information Technology,"Technology Hardware, Storage & Peripherals","Santa Clara, California",0001474432,,51753525248.0,2026-10-13
+ES,ES,Eversource Energy,Utilities,Electric Utilities,"Hartford, Connecticut",0000072741,,24898199552.0,2026-10-13
+EXC,EXC,Exelon,Utilities,Electric Utilities,"Chicago, Illinois",0001109357,,43394293760.0,2026-10-13
+EXE,EXE,Expand Energy,Energy,Oil & Gas Exploration & Production,"Oklahoma City, Oklahoma",0000895126,,20559851520.0,2026-10-13
+EXPE,EXPE,Expedia Group,Consumer Discretionary,"Hotels, Resorts & Cruise Lines","Seattle, Washington",0001324424,,32222328832.0,2026-10-13
+EXPD,EXPD,Expeditors International,Industrials,Air Freight & Logistics,"Seattle, Washington",0000746515,,25141487616.0,2026-10-13
+EXR,EXR,Extra Space Storage,Real Estate,Self-Storage REITs,"Salt Lake City, Utah",0001289490,,29585176576.0,2026-10-13
+XOM,XOM,ExxonMobil,Energy,Integrated Oil & Gas,"Irving, Texas",0002115436,,707865608192.0,2026-10-13
+FFIV,FFIV,"F5, Inc.",Information Technology,Communications Equipment,"Seattle, Washington",0001048695,,26812405760.0,2026-10-13
+FDS,FDS,FactSet,Financials,Financial Exchanges & Data,"Norwalk, Connecticut",0001013237,,10266705920.0,2026-10-13
+FICO,FICO,Fair Isaac,Information Technology,Application Software,"Bozeman, Montana",0000814547,,15982251008.0,2026-10-13
+FAST,FAST,Fastenal,Industrials,Trading Companies & Distributors,"Winona, Minnesota",0000815556,,59084652544.0,2026-10-13
+FRT,FRT,Federal Realty Investment Trust,Real Estate,Retail REITs,"Rockville, Maryland",0000034903,,9303059456.0,2026-10-13
+FDX,FDX,FedEx,Industrials,Air Freight & Logistics,"Memphis, Tennessee",0001048911,,69162205184.0,2026-10-13
+FDXF,FDXF,FedEx Freight,Industrials,Cargo Ground Transportation,"Memphis, Tennessee",0002082247,,16913490944.0,2026-10-13
+FERG,FERG,Ferguson Enterprises,Industrials,Trading Companies & Distributors,"Newport News, Virginia",0002011641,,42665996288.0,2026-10-13
+FIS,FIS,Fidelity National Information Services,Financials,Transaction & Payment Processing Services,"Jacksonville, Florida",0001136893,,17668083712.0,2026-10-13
+FITB,FITB,Fifth Third Bancorp,Financials,Regional Banks,"Cincinnati, Ohio",0000035527,,46088278016.0,2026-10-13
+FSLR,FSLR,First Solar,Information Technology,Semiconductors,"Tempe, Arizona",0001274494,,19314470912.0,2026-10-13
+FE,FE,FirstEnergy,Utilities,Electric Utilities,"Akron, Ohio",0001031296,,26247108608.0,2026-10-13
+FISV,FISV,Fiserv,Financials,Transaction & Payment Processing Services,"Brookfield, Wisconsin",0000798354,,24487856128.0,2026-10-13
+FLEX,FLEX,Flex Ltd.,Information Technology,Electronic Manufacturing Services,"Austin, Texas",0000866374,,43315544064.0,2026-10-13
+F,F,Ford Motor Company,Consumer Discretionary,Automobile Manufacturers,"Dearborn, Michigan",0000037996,,47851151360.0,2026-10-13
+FTNT,FTNT,Fortinet,Information Technology,Systems Software,"Sunnyvale, California",0001262039,,141562707968.0,2026-10-13
+FTV,FTV,Fortive,Industrials,Industrial Machinery & Supplies & Components,"Everett, Washington",0001659166,,17326718976.0,2026-10-13
+FOXA,FOXA,Fox Corporation (Class A),Communication Services,Broadcasting,"New York City, New York",0001754301,FOX,26392553472.0,2026-10-13
+FOX,FOX,Fox Corporation (Class B),Communication Services,Broadcasting,"New York City, New York",0001754301,FOXA,23605288960.0,2026-10-13
+BEN,BEN,Franklin Resources,Financials,Asset Management & Custody Banks,"San Mateo, California",0000038777,,16161926144.0,2026-10-13
+FCX,FCX,Freeport-McMoRan,Materials,Copper,"Phoenix, Arizona",0000831259,,105245728768.0,2026-10-13
+GRMN,GRMN,Garmin,Consumer Discretionary,Consumer Electronics,"Schaffhausen, Switzerland",0001121788,,51445346304.0,2026-10-13
+IT,IT,Gartner,Information Technology,IT Consulting & Other Services,"Stamford, Connecticut",0000749251,,12257216512.0,2026-10-13
+GE,GE,GE Aerospace,Industrials,Aerospace & Defense,"Evendale, Ohio",0000040545,,320233308160.0,2026-10-13
+GEHC,GEHC,GE HealthCare,Health Care,Health Care Equipment,"Chicago, Illinois",0001932393,,30597224448.0,2026-10-13
+GEV,GEV,GE Vernova,Industrials,Heavy Electrical Equipment,"Cambridge, Massachusetts",0001996810,,265481306112.0,2026-10-13
+GEN,GEN,Gen Digital,Information Technology,Systems Software,"Tempe, Arizona",0000849399,,13977007104.0,2026-10-13
+GNRC,GNRC,Generac,Industrials,Heavy Electrical Equipment,"Waukesha, Wisconsin",0001474735,,12897790976.0,2026-10-13
+GD,GD,General Dynamics,Industrials,Aerospace & Defense,"Reston, Virginia",0000040533,,90761109504.0,2026-10-13
+GIS,GIS,General Mills,Consumer Staples,Packaged Foods & Meats,"Golden Valley, Minnesota",0000040704,,17484269568.0,2026-10-13
+GM,GM,General Motors,Consumer Discretionary,Automobile Manufacturers,"Detroit, Michigan",0001467858,,72275681280.0,2026-10-13
+GPC,GPC,Genuine Parts Company,Consumer Discretionary,Distributors,"Atlanta, Georgia",0000040987,,17869381632.0,2026-10-13
+GILD,GILD,Gilead Sciences,Health Care,Biotechnology,"Foster City, California",0000882095,,186526449664.0,2026-10-13
+GPN,GPN,Global Payments,Financials,Transaction & Payment Processing Services,"Atlanta, Georgia",0001123360,,21714583552.0,2026-10-13
+GL,GL,Globe Life,Financials,Life & Health Insurance,"McKinney, Texas",0000320335,,12689380352.0,2026-10-13
+GDDY,GDDY,GoDaddy,Information Technology,Internet Services & Infrastructure,"Tempe, Arizona",0001609711,,12958593024.0,2026-10-13
+GS,GS,Goldman Sachs,Financials,Investment Banking & Brokerage,"New York City, New York",0000886982,,260292673536.0,2026-10-13
+HAL,HAL,Halliburton,Energy,Oil & Gas Equipment & Services,"Houston, Texas",0000045012,,27160049664.0,2026-10-13
+HIG,HIG,Hartford (The),Financials,Property & Casualty Insurance,"Hartford, Connecticut",0000874766,,35264827392.0,2026-10-13
+HAS,HAS,Hasbro,Consumer Discretionary,Leisure Products,"Pawtucket, Rhode Island",0000046080,,13361142784.0,2026-10-13
+HCA,HCA,HCA Healthcare,Health Care,Health Care Facilities,"Nashville, Tennessee",0000860730,,99287588864.0,2026-10-13
+DOC,DOC,Healthpeak Properties,Real Estate,Health Care REITs,"Denver, Colorado",0000765880,,13434551296.0,2026-10-13
+HSIC,HSIC,Henry Schein,Health Care,Health Care Distributors,"Melville, New York",0001000228,,9387143168.0,2026-10-13
+HSY,HSY,Hershey Company (The),Consumer Staples,Packaged Foods & Meats,"Hershey, Pennsylvania",0000047111,,32919660544.0,2026-10-13
+HPE,HPE,Hewlett Packard Enterprise,Information Technology,"Technology Hardware, Storage & Peripherals","Houston, Texas",0001645590,,93360603136.0,2026-10-13
+HLT,HLT,Hilton Worldwide,Consumer Discretionary,"Hotels, Resorts & Cruise Lines","Tysons Corner, Virginia",0001585689,,73717760000.0,2026-10-13
+HD,HD,Home Depot (The),Consumer Discretionary,Home Improvement Retail,"Atlanta, Georgia",0000354950,,289948532736.0,2026-10-13
+HONA,HONA,Honeywell Aerospace,Industrials,Aerospace & Defense,"Phoenix, Arizona",0002089271,,49847156736.0,2026-10-13
+HON,HON,Honeywell Technologies,Industrials,Industrial Conglomerates,"Charlotte, North Carolina",0000773840,,66443300864.0,2026-10-13
+HRL,HRL,Hormel Foods,Consumer Staples,Packaged Foods & Meats,"Austin, Minnesota",0000048465,,10621769728.0,2026-10-13
+HST,HST,Host Hotels & Resorts,Real Estate,Hotel & Resort REITs,"Bethesda, Maryland",0001070750,,15798079488.0,2026-10-13
+HWM,HWM,Howmet Aerospace,Industrials,Aerospace & Defense,"Pittsburgh, Pennsylvania",0000004281,,88059338752.0,2026-10-13
+HPQ,HPQ,HP Inc.,Information Technology,"Technology Hardware, Storage & Peripherals","Palo Alto, California",0000047217,,26936498176.0,2026-10-13
+HUBB,HUBB,Hubbell Incorporated,Industrials,Industrial Machinery & Supplies & Components,"Shelton, Connecticut",0000048898,,25045280768.0,2026-10-13
+HUM,HUM,Humana,Health Care,Managed Health Care,"Louisville, Kentucky",0000049071,,52054810624.0,2026-10-13
+HBAN,HBAN,Huntington Bancshares,Financials,Regional Banks,"Columbus, Ohio; Detroit, Michigan",0000049196,,31114387456.0,2026-10-13
+HII,HII,Huntington Ingalls Industries,Industrials,Aerospace & Defense,"Newport News, Virginia",0001501585,,10403996672.0,2026-10-13
+IBM,IBM,IBM,Information Technology,IT Consulting & Other Services,"Armonk, New York",0000051143,,213883355136.0,2026-10-13
+IEX,IEX,IDEX Corporation,Industrials,Industrial Machinery & Supplies & Components,"Northbrook, Illinois",0000832101,,17380939776.0,2026-10-13
+IDXX,IDXX,Idexx Laboratories,Health Care,Health Care Equipment,"Westbrook, Maine",0000874716,,41276579840.0,2026-10-13
+ITW,ITW,Illinois Tool Works,Industrials,Industrial Machinery & Supplies & Components,"Glenview, Illinois",0000049826,,75503321088.0,2026-10-13
+ILMN,ILMN,"Illumina, Inc.",Health Care,Life Sciences Tools & Services,"San Diego, California",0001110803,,41777172480.0,2026-10-13
+INCY,INCY,Incyte,Health Care,Biotechnology,"Wilmington, Delaware",0000879169,,22572421120.0,2026-10-13
+IR,IR,Ingersoll Rand,Industrials,Industrial Machinery & Supplies & Components,"Davidson, North Carolina",0001699150,,30686873600.0,2026-10-13
+PODD,PODD,Insulet Corporation,Health Care,Health Care Equipment,"Acton, Massachusetts",0001145197,,9696410624.0,2026-10-13
+INTC,INTC,Intel,Information Technology,Semiconductors,"Santa Clara, California",0000050863,,535746740224.0,2026-10-13
+IBKR,IBKR,Interactive Brokers,Financials,Investment Banking & Brokerage,"Greenwich, Connecticut",0001381197,,149748350976.0,2026-10-13
+ICE,ICE,Intercontinental Exchange,Financials,Financial Exchanges & Data,"Atlanta, Georgia",0001571949,,88374722560.0,2026-10-13
+IFF,IFF,International Flavors & Fragrances,Materials,Specialty Chemicals,"New York City, New York",0000051253,,21677541376.0,2026-10-13
+IP,IP,International Paper,Materials,Paper & Plastic Packaging Products & Materials,"Memphis, Tennessee",0000051434,,16808548352.0,2026-10-13
+INTU,INTU,Intuit,Information Technology,Application Software,"Mountain View, California",0000896878,,81771544576.0,2026-10-13
+ISRG,ISRG,Intuitive Surgical,Health Care,Health Care Equipment,"Sunnyvale, California",0001035267,,151075831808.0,2026-10-13
+IVZ,IVZ,Invesco,Financials,Asset Management & Custody Banks,"Atlanta, Georgia",0000914208,,12918283264.0,2026-10-13
+INVH,INVH,Invitation Homes,Real Estate,Single-Family Residential REITs,"Dallas, Texas",0001687229,,15769640960.0,2026-10-13
+IQV,IQV,IQVIA,Health Care,Life Sciences Tools & Services,"Durham, North Carolina",0001478242,,43159764992.0,2026-10-13
+IRM,IRM,Iron Mountain,Real Estate,Other Specialized REITs,"Portsmouth, New Hampshire",0001020569,,34265593856.0,2026-10-13
+JBHT,JBHT,J.B. Hunt,Industrials,Cargo Ground Transportation,"Lowell, Arkansas",0000728535,,21441718272.0,2026-10-13
+JBL,JBL,Jabil,Information Technology,Electronic Manufacturing Services,"St. Petersburg, Florida",0000898293,,32694620160.0,2026-10-13
+JKHY,JKHY,Jack Henry & Associates,Financials,Transaction & Payment Processing Services,"Monett, Missouri",0000779152,,10490858496.0,2026-10-13
+J,J,Jacobs Solutions,Industrials,Construction & Engineering,"Dallas, Texas",0000052988,,16318692352.0,2026-10-13
+JNJ,JNJ,Johnson & Johnson,Health Care,Pharmaceuticals,"New Brunswick, New Jersey",0000200406,,635562557440.0,2026-10-13
+JCI,JCI,Johnson Controls,Industrials,Building Products,"Cork, Ireland",0000833444,,94138277888.0,2026-10-13
+JPM,JPM,JPMorgan Chase,Financials,Diversified Banks,"New York City, New York",0000019617,,888631656448.0,2026-10-13
+KVUE,KVUE,Kenvue,Consumer Staples,Personal Care Products,"Skillman, New Jersey",0001944048,,34247391232.0,2026-10-13
+KDP,KDP,Keurig Dr Pepper,Consumer Staples,Soft Drinks & Non-alcoholic Beverages,"Burlington, Massachusetts",0001418135,,44567052288.0,2026-10-13
+KEY,KEY,KeyCorp,Financials,Regional Banks,"Cleveland, Ohio",0000091576,,21438613504.0,2026-10-13
+KEYS,KEYS,Keysight Technologies,Information Technology,Electronic Equipment & Instruments,"Santa Rosa, California",0001601046,,64301445120.0,2026-10-13
+KMB,KMB,Kimberly-Clark,Consumer Staples,Household Products,"Irving, Texas",0000055785,,32848830464.0,2026-10-13
+KIM,KIM,Kimco Realty,Real Estate,Retail REITs,"Jericho, New York",0000879101,,14972018688.0,2026-10-13
+KMI,KMI,Kinder Morgan,Energy,Oil & Gas Storage & Transportation,"Houston, Texas",0001506307,,73662619648.0,2026-10-13
+KKR,KKR,KKR & Co.,Financials,Asset Management & Custody Banks,"New York City, New York",0001404912,,84517773312.0,2026-10-13
+KLAC,KLAC,KLA Corporation,Information Technology,Semiconductor Materials & Equipment,"Milpitas, California",0000319201,,248107827200.0,2026-10-13
+KHC,KHC,Kraft Heinz,Consumer Staples,Packaged Foods & Meats,"Chicago, Illinois; Pittsburgh, Pennsylvania",0001637459,,26621743104.0,2026-10-13
+KR,KR,Kroger,Consumer Staples,Food Retail,"Cincinnati, Ohio",0000056873,,36947226624.0,2026-10-13
+LHX,LHX,L3Harris,Industrials,Aerospace & Defense,"Melbourne, Florida",0000202058,,44365635584.0,2026-10-13
+LH,LH,Labcorp,Health Care,Health Care Services,"Burlington, North Carolina",0000920148,,25588670464.0,2026-10-13
+LRCX,LRCX,Lam Research,Information Technology,Semiconductor Materials & Equipment,"Fremont, California",0000707549,,387390930944.0,2026-10-13
+LVS,LVS,Las Vegas Sands,Consumer Discretionary,Casinos & Gaming,"Las Vegas, Nevada",0001300514,,23414398976.0,2026-10-13
+LDOS,LDOS,Leidos,Industrials,Diversified Support Services,"Reston, Virginia",0001336920,,15259852800.0,2026-10-13
+LEN,LEN,Lennar,Consumer Discretionary,Homebuilding,"Miami, Florida",0000920760,,17759252480.0,2026-10-13
+LII,LII,Lennox International,Industrials,Building Products,"Richardson, Texas",0001069202,,12328484864.0,2026-10-13
+LLY,LLY,Lilly (Eli),Health Care,Pharmaceuticals,"Indianapolis, Indiana",0000059478,,1054591156224.0,2026-10-13
+LIN,LIN,Linde plc,Materials,Industrial Gases,"Guildford, United Kingdom",0001707925,,224658685952.0,2026-10-13
+LYV,LYV,Live Nation Entertainment,Communication Services,Movies & Entertainment,"Beverly Hills, California",0001335258,,39519248384.0,2026-10-13
+LMT,LMT,Lockheed Martin,Industrials,Aerospace & Defense,"Bethesda, Maryland",0000936468,,118137167872.0,2026-10-13
+L,L,Loews Corporation,Financials,Multi-line Insurance,"New York City, New York",0000060086,,22033217536.0,2026-10-13
+LOW,LOW,Lowe's,Consumer Discretionary,Home Improvement Retail,"Mooresville, North Carolina",0000060667,,104114798592.0,2026-10-13
+LULU,LULU,Lululemon Athletica,Consumer Discretionary,"Apparel, Accessories & Luxury Goods","Vancouver, Canada",0001397187,,10964087808.0,2026-10-13
+LITE,LITE,Lumentum,Information Technology,Communications Equipment,"San Jose, California",0001633978,,90167074816.0,2026-10-13
+LYB,LYB,LyondellBasell,Materials,Specialty Chemicals,"Rotterdam, Netherlands",0001489393,,19191685120.0,2026-10-13
+MTB,MTB,M&T Bank,Financials,Regional Banks,"Buffalo, New York",0000036270,,31755689984.0,2026-10-13
+MPC,MPC,Marathon Petroleum,Energy,Oil & Gas Refining & Marketing,"Findlay, Ohio",0001510295,,128845209600.0,2026-10-13
+MAR,MAR,Marriott International,Consumer Discretionary,"Hotels, Resorts & Cruise Lines","Bethesda, Maryland",0001048286,,96300990464.0,2026-10-13
+MRSH,MRSH,Marsh McLennan,Financials,Insurance Brokers,"New York City, New York",0000062709,,84246872064.0,2026-10-13
+MLM,MLM,Martin Marietta Materials,Materials,Construction Materials,"Raleigh, North Carolina",0000916076,,33889030144.0,2026-10-13
+MRVL,MRVL,Marvell Technology,Information Technology,Semiconductors,"Santa Clara, California",0001835632,,238929608704.0,2026-10-13
+MAS,MAS,Masco,Industrials,Building Products,"Livonia, Michigan",0000062996,,13601989632.0,2026-10-13
+MA,MA,Mastercard,Financials,Transaction & Payment Processing Services,"Harrison, New York",0001141391,,521304768512.0,2026-10-13
+MKC,MKC,McCormick & Company,Consumer Staples,Packaged Foods & Meats,"Hunt Valley, Maryland",0000063754,,12263959552.0,2026-10-13
+MCD,MCD,McDonald's,Consumer Discretionary,Restaurants,"Chicago, Illinois",0000063908,,166755729408.0,2026-10-13
+MCK,MCK,McKesson Corporation,Health Care,Health Care Distributors,"Irving, Texas",0000927653,,111432400896.0,2026-10-13
+MDT,MDT,Medtronic,Health Care,Health Care Equipment,"Galway, Ireland",0001613103,,117591146496.0,2026-10-13
+MRK,MRK,Merck & Co.,Health Care,Pharmaceuticals,"Kenilworth, New Jersey",0000310158,,358850101248.0,2026-10-13
+META,META,Meta Platforms,Communication Services,Interactive Media & Services,"Menlo Park, California",0001326801,,1892695277568.0,2026-10-13
+MET,MET,MetLife,Financials,Life & Health Insurance,"New York City, New York",0001099219,,63655723008.0,2026-10-13
+MTD,MTD,Mettler Toledo,Health Care,Life Sciences Tools & Services,"Columbus, Ohio",0001037646,,31317344256.0,2026-10-13
+MGM,MGM,MGM Resorts,Consumer Discretionary,Casinos & Gaming,"Paradise, Nevada",0000789570,,7501558272.0,2026-10-13
+MCHP,MCHP,Microchip Technology,Information Technology,Semiconductors,"Chandler, Arizona",0000827054,,40090333184.0,2026-10-13
+MU,MU,Micron Technology,Information Technology,Semiconductors,"Boise, Idaho",0000723125,,1119022743552.0,2026-10-13
+MSFT,MSFT,Microsoft,Information Technology,Systems Software,"Redmond, Washington",0000789019,,4018334334976.0,2026-10-13
+MAA,MAA,Mid-America Apartment Communities,Real Estate,Multi-Family Residential REITs,"Memphis, Tennessee",0000912595,,13862850560.0,2026-10-13
+MRNA,MRNA,Moderna,Health Care,Biotechnology,"Cambridge, Massachusetts",0001682852,,85332680704.0,2026-10-13
+MDLZ,MDLZ,Mondelez International,Consumer Staples,Packaged Foods & Meats,"Chicago, Illinois",0001103982,,78863081472.0,2026-10-13
+MPWR,MPWR,Monolithic Power Systems,Information Technology,Semiconductors,"Kirkland, Washington",0001280452,,64830918656.0,2026-10-13
+MNST,MNST,Monster Beverage,Consumer Staples,Soft Drinks & Non-alcoholic Beverages,"Corona, California",0000865752,,85728100352.0,2026-10-13
+MCO,MCO,Moody's Corporation,Financials,Financial Exchanges & Data,"New York City, New York",0001059556,,81481654272.0,2026-10-13
+MS,MS,Morgan Stanley,Financials,Investment Banking & Brokerage,"New York City, New York",0000895421,,298439016448.0,2026-10-13
+MOS,MOS,Mosaic Company (The),Materials,Fertilizers & Agricultural Chemicals,"Tampa, Florida",0001285785,,5992333312.0,2026-10-13
+MSI,MSI,Motorola Solutions,Information Technology,Communications Equipment,"Chicago, Illinois",0000068505,,73864839168.0,2026-10-13
+MSCI,MSCI,MSCI,Financials,Financial Exchanges & Data,"New York City, New York",0001408198,,41294327808.0,2026-10-13
+NDAQ,NDAQ,"Nasdaq, Inc.",Financials,Financial Exchanges & Data,"New York City, New York",0001120193,,52705976320.0,2026-10-13
+NTAP,NTAP,NetApp,Information Technology,"Technology Hardware, Storage & Peripherals","San Jose, California",0001002047,,46979497984.0,2026-10-13
+NFLX,NFLX,Netflix,Communication Services,Movies & Entertainment,"Los Gatos, California",0001065280,,294015762432.0,2026-10-13
+NEM,NEM,Newmont,Materials,Gold,"Denver, Colorado",0001164727,,123440054272.0,2026-10-13
+NWSA,NWSA,News Corp (Class A),Communication Services,Publishing,"New York City, New York",0001564708,NWS,15830354944.0,2026-10-13
+NWS,NWS,News Corp (Class B),Communication Services,Publishing,"New York City, New York",0001564708,NWSA,17446799360.0,2026-10-13
+NEE,NEE,NextEra Energy,Utilities,Multi-Utilities,"Juno Beach, Florida",0000753308,,163770155008.0,2026-10-13
+NKE,NKE,"Nike, Inc.",Consumer Discretionary,"Apparel, Accessories & Luxury Goods","Washington County, Oregon",0000320187,,52505665536.0,2026-10-13
+NI,NI,NiSource,Utilities,Multi-Utilities,"Merrillville, Indiana",0001111711,,19772262400.0,2026-10-13
+NDSN,NDSN,Nordson Corporation,Industrials,Industrial Machinery & Supplies & Components,"Westlake, Ohio",0000072331,,18405300224.0,2026-10-13
+NSC,NSC,Norfolk Southern,Industrials,Rail Transportation,"Atlanta, Georgia",0000702165,,71730921472.0,2026-10-13
+NTRS,NTRS,Northern Trust,Financials,Asset Management & Custody Banks,"Chicago, Illinois",0000073124,,30957926400.0,2026-10-13
+NOC,NOC,Northrop Grumman,Industrials,Aerospace & Defense,"West Falls Church, Virginia[2]",0001133421,,68900569088.0,2026-10-13
+NCLH,NCLH,Norwegian Cruise Line Holdings,Consumer Discretionary,"Hotels, Resorts & Cruise Lines","Miami-Dade County, Florida[3]",0001513761,,7048533504.0,2026-10-13
+NRG,NRG,NRG Energy,Utilities,Independent Power Producers & Energy Traders,"Houston, Texas",0001013871,,22360088576.0,2026-10-13
+NUE,NUE,Nucor,Materials,Steel,"Charlotte, North Carolina",0000073309,,57134104576.0,2026-10-13
+NVDA,NVDA,Nvidia,Information Technology,Semiconductors,"Santa Clara, California",0001045810,,5464948998144.0,2026-10-13
+NVR,NVR,"NVR, Inc.",Consumer Discretionary,Homebuilding,"Reston, Virginia",0000906163,,15399272448.0,2026-10-13
+NXPI,NXPI,NXP Semiconductors,Information Technology,Semiconductors,"Eindhoven, Netherlands",0001413447,,56789897216.0,2026-10-13
+ORLY,ORLY,O'Reilly Automotive,Consumer Discretionary,Automotive Retail,"Springfield, Missouri",0000898173,,70096453632.0,2026-10-13
+OXY,OXY,Occidental Petroleum,Energy,Oil & Gas Exploration & Production,"Houston, Texas",0000797468,,61107834880.0,2026-10-13
+ODFL,ODFL,Old Dominion,Industrials,Cargo Ground Transportation,"Thomasville, North Carolina",0000878927,,37831512064.0,2026-10-13
+OMC,OMC,Omnicom Group,Communication Services,Advertising,"New York City, New York",0000029989,,21143842816.0,2026-10-13
+ON,ON,ON Semiconductor,Information Technology,Semiconductors,"Phoenix, Arizona",0001097864,,29588215808.0,2026-10-13
+OKE,OKE,Oneok,Energy,Oil & Gas Storage & Transportation,"Tulsa, Oklahoma",0001039684,,58010255360.0,2026-10-13
+ORCL,ORCL,Oracle Corporation,Information Technology,Application Software,"Austin, Texas",0001341439,,416497926144.0,2026-10-13
+OTIS,OTIS,Otis Worldwide,Industrials,Industrial Machinery & Supplies & Components,"Farmington, Connecticut",0001781335,,25409679360.0,2026-10-13
+PCAR,PCAR,Paccar,Industrials,Construction Machinery & Heavy Transportation Equipment,"Bellevue, Washington",0000075362,,56915841024.0,2026-10-13
+PKG,PKG,Packaging Corporation of America,Materials,Paper & Plastic Packaging Products & Materials,"Lake Forest, Illinois",0000075677,,20298375168.0,2026-10-13
+PLTR,PLTR,Palantir Technologies,Information Technology,Application Software,"Aventura, Florida",0001321655,,502239199232.0,2026-10-13
+PANW,PANW,Palo Alto Networks,Information Technology,Systems Software,"Santa Clara, California",0001327567,,330332930048.0,2026-10-13
+PH,PH,Parker Hannifin,Industrials,Industrial Machinery & Supplies & Components,"Cleveland, Ohio",0000076334,,120675713024.0,2026-10-13
+PAYX,PAYX,Paychex,Industrials,Human Resource & Employment Services,"Penfield, New York",0000723531,,37249798144.0,2026-10-13
+PYPL,PYPL,PayPal,Financials,Transaction & Payment Processing Services,"San Jose, California",0001633917,,47948578816.0,2026-10-13
+PNR,PNR,Pentair,Industrials,Industrial Machinery & Supplies & Components,"Worsley, United Kingdom",0000077360,,8351868416.0,2026-10-13
+PEP,PEP,PepsiCo,Consumer Staples,Soft Drinks & Non-alcoholic Beverages,"Purchase, New York",0000077476,,172632047616.0,2026-10-13
+PFE,PFE,Pfizer,Health Care,Pharmaceuticals,"New York City, New York",0000078003,,161870725120.0,2026-10-13
+PCG,PCG,PG&E Corporation,Utilities,Multi-Utilities,"Oakland, California",0001004980,,39511150592.0,2026-10-13
+PM,PM,Philip Morris International,Consumer Staples,Tobacco,"New York City, New York",0001413329,,314839891968.0,2026-10-13
+PSX,PSX,Phillips 66,Energy,Oil & Gas Refining & Marketing,"Houston, Texas",0001534701,,112851173376.0,2026-10-13
+PNW,PNW,Pinnacle West Capital,Utilities,Multi-Utilities,"Phoenix, Arizona",0000764622,,12108816384.0,2026-10-13
+PNC,PNC,PNC Financial Services,Financials,Diversified Banks,"Pittsburgh, Pennsylvania",0000713676,,88270274560.0,2026-10-13
+PPG,PPG,PPG Industries,Materials,Specialty Chemicals,"Pittsburgh, Pennsylvania",0000079879,,23054733312.0,2026-10-13
+PPL,PPL,PPL Corporation,Utilities,Electric Utilities,"Allentown, Pennsylvania",0000922224,,25842388992.0,2026-10-13
+PFG,PFG,Principal Financial Group,Financials,Life & Health Insurance,"Des Moines, Iowa",0001126328,,23089043456.0,2026-10-13
+PG,PG,Procter & Gamble,Consumer Staples,Personal Care Products,"Cincinnati, Ohio",0000080424,,355833413632.0,2026-10-13
+PGR,PGR,Progressive Corporation,Financials,Property & Casualty Insurance,"Mayfield Village, Ohio",0000080661,,127850512384.0,2026-10-13
+PLD,PLD,Prologis,Real Estate,Industrial REITs,"San Francisco, California",0001045609,,128772947968.0,2026-10-13
+PRU,PRU,Prudential Financial,Financials,Life & Health Insurance,"Newark, New Jersey",0001137774,,39119548416.0,2026-10-13
+PEG,PEG,Public Service Enterprise Group,Utilities,Electric Utilities,"Newark, New Jersey",0000788784,,35268202496.0,2026-10-13
+PTC,PTC,PTC Inc.,Information Technology,Application Software,"Boston, Massachusetts",0000857005,,21117018112.0,2026-10-13
+PSA,PSA,Public Storage,Real Estate,Self-Storage REITs,"Glendale, California",0001393311,,53977890816.0,2026-10-13
+PHM,PHM,PulteGroup,Consumer Discretionary,Homebuilding,"Atlanta, Georgia",0000822416,,21170653184.0,2026-10-13
+PWR,PWR,Quanta Services,Industrials,Construction & Engineering,"Houston, Texas",0001050915,,104457084928.0,2026-10-13
+QCOM,QCOM,Qualcomm,Information Technology,Semiconductors,"San Diego, California",0000804328,,186263240704.0,2026-10-13
+DGX,DGX,Quest Diagnostics,Health Care,Health Care Services,"Secaucus, New Jersey",0001022079,,25676154880.0,2026-10-13
+Q,Q,Qnity Electronics,Information Technology,Semiconductor Materials & Equipment,"Wilmington, Delaware",0002058873,,25776584704.0,2026-10-13
+RL,RL,Ralph Lauren Corporation,Consumer Discretionary,"Apparel, Accessories & Luxury Goods","New York City, New York",0001037038,,22238474240.0,2026-10-13
+RJF,RJF,Raymond James Financial,Financials,Investment Banking & Brokerage,"St. Petersburg, Florida",0000720005,,30476664832.0,2026-10-13
+RDDT,RDDT,Reddit,Communication Services,Interactive Media & Services,"San Francisco, California",0001713445,,30769973248.0,2026-10-13
+RTX,RTX,RTX Corporation,Industrials,Aerospace & Defense,"Waltham, Massachusetts",0000101829,,251572535296.0,2026-10-13
+O,O,Realty Income,Real Estate,Retail REITs,"San Diego, California",0000726728,,51758129152.0,2026-10-13
+REG,REG,Regency Centers,Real Estate,Retail REITs,"Jacksonville, Florida",0000910606,,13406811136.0,2026-10-13
+REGN,REGN,Regeneron Pharmaceuticals,Health Care,Biotechnology,"Tarrytown, New York",0000872589,,78535098368.0,2026-10-13
+RF,RF,Regions Financial Corporation,Financials,Regional Banks,"Birmingham, Alabama",0001281761,,23317311488.0,2026-10-13
+RSG,RSG,Republic Services,Industrials,Environmental & Facilities Services,"Phoenix, Arizona",0001060391,,67290304512.0,2026-10-13
+RMD,RMD,ResMed|,Health Care,Health Care Equipment,"San Diego, California",0000943819,,32993968128.0,2026-10-13
+RVTY,RVTY,Revvity,Health Care,Health Care Equipment,"Waltham, Massachusetts",0000031791,,17363959808.0,2026-10-13
+HOOD,HOOD,Robinhood Markets,Financials,Investment Banking & Brokerage,"Menlo Park, California",0001783879,,98197774336.0,2026-10-13
+ROK,ROK,Rockwell Automation,Industrials,Electrical Components & Equipment,"Milwaukee, Wisconsin",0001024478,,48289558528.0,2026-10-13
+ROL,ROL,"Rollins, Inc.",Industrials,Environmental & Facilities Services,"Atlanta, Georgia",0000084839,,15430333440.0,2026-10-13
+ROP,ROP,Roper Technologies,Information Technology,Electronic Equipment & Instruments,"Sarasota, Florida",0000882835,,36328267776.0,2026-10-13
+ROST,ROST,Ross Stores,Consumer Discretionary,Apparel Retail,"Dublin, California",0000745732,,72445198336.0,2026-10-13
+RCL,RCL,Royal Caribbean Group,Consumer Discretionary,"Hotels, Resorts & Cruise Lines","Miami, Florida",0000884887,,75065778176.0,2026-10-13
+SPGI,SPGI,S&P Global,Financials,Financial Exchanges & Data,"New York City, New York",0000064040,,121513615360.0,2026-10-13
+CRM,CRM,Salesforce,Information Technology,Application Software,"San Francisco, California",0001108524,,192516161536.0,2026-10-13
+SNDK,SNDK,Sandisk,Information Technology,"Technology Hardware, Storage & Peripherals","Milpitas, California",0002023554,,214960177152.0,2026-10-13
+SBAC,SBAC,SBA Communications,Real Estate,Telecom Tower REITs,"Boca Raton, Florida",0001034054,,19549917184.0,2026-10-13
+SLB,SLB,Schlumberger,Energy,Oil & Gas Equipment & Services,"Houston, Texas",0000087347,,72381669376.0,2026-10-13
+STX,STX,Seagate Technology,Information Technology,"Technology Hardware, Storage & Peripherals","Dublin, Ireland",0001137789,,171283775488.0,2026-10-13
+SRE,SRE,Sempra,Utilities,Multi-Utilities,"San Diego, California",0001032208,,53541359616.0,2026-10-13
+NOW,NOW,ServiceNow,Information Technology,Systems Software,"Santa Clara, California",0001373715,,145071521792.0,2026-10-13
+SHW,SHW,Sherwin-Williams,Materials,Specialty Chemicals,"Cleveland, Ohio",0000089800,,77733584896.0,2026-10-13
+SPG,SPG,Simon Property Group,Real Estate,Retail REITs,"Indianapolis, Indiana",0001063761,,76459966464.0,2026-10-13
+SKYD,SKYD,Skydance Corporation,Communication Services,Movies & Entertainment,"New York City, New York",0002041610,,46186348544.0,2026-10-13
+SWKS,SWKS,Skyworks Solutions,Information Technology,Semiconductors,"Irvine, California",0000004127,,17566865408.0,2026-10-13
+SJM,SJM,J.M. Smucker Company (The),Consumer Staples,Packaged Foods & Meats,"Orrville, Ohio",0000091419,,12820918272.0,2026-10-13
+SW,SW,Smurfit Westrock,Materials,Paper & Plastic Packaging Products & Materials,"Dublin, Ireland",0002005951,,21542156288.0,2026-10-13
+SNA,SNA,Snap-on,Industrials,Industrial Machinery & Supplies & Components,"Kenosha, Wisconsin",0000091440,,18724700160.0,2026-10-13
+SOLV,SOLV,Solventum,Health Care,Health Care Technology,"Saint Paul, Minnesota",0001964738,,14521785344.0,2026-10-13
+SO,SO,Southern Company,Utilities,Electric Utilities,"Atlanta, Georgia",0000092122,,100127596544.0,2026-10-13
+LUV,LUV,Southwest Airlines,Industrials,Passenger Airlines,"Dallas, Texas",0000092380,,19940124672.0,2026-10-13
+SWK,SWK,Stanley Black & Decker,Industrials,Industrial Machinery & Supplies & Components,"New Britain, Connecticut",0000093556,,13387625472.0,2026-10-13
+SBUX,SBUX,Starbucks,Consumer Discretionary,Restaurants,"Seattle, Washington",0000829224,,105204908032.0,2026-10-13
+STT,STT,State Street Corporation,Financials,Asset Management & Custody Banks,"Boston, Massachusetts",0000093751,,48053575680.0,2026-10-13
+STLD,STLD,Steel Dynamics,Materials,Steel,"Fort Wayne, Indiana",0001022671,,34275481600.0,2026-10-13
+STE,STE,Steris,Health Care,Health Care Equipment,"Dublin, Ireland",0001757898,,21350574080.0,2026-10-13
+SYK,SYK,Stryker Corporation,Health Care,Health Care Equipment,"Kalamazoo, Michigan",0000310764,,108397748224.0,2026-10-13
+SMCI,SMCI,Supermicro,Information Technology,"Technology Hardware, Storage & Peripherals","San Jose, California",0001375365,,26265475072.0,2026-10-13
+SYF,SYF,Synchrony Financial,Financials,Consumer Finance,"Stamford, Connecticut",0001601712,,23953803264.0,2026-10-13
+SNPS,SNPS,Synopsys,Information Technology,Application Software,"Sunnyvale, California",0000883241,,96299327488.0,2026-10-13
+SYY,SYY,Sysco,Consumer Staples,Food Distributors,"Houston, Texas",0000096021,,38713626624.0,2026-10-13
+TMUS,TMUS,T-Mobile US,Communication Services,Wireless Telecommunication Services,"Bellevue, Washington",0001283699,,162906636288.0,2026-10-13
+TROW,TROW,T. Rowe Price,Financials,Asset Management & Custody Banks,"Baltimore, Maryland",0001113169,,22182715392.0,2026-10-13
+TTWO,TTWO,Take-Two Interactive,Communication Services,Interactive Home Entertainment,"New York City, New York",0000946581,,39045259264.0,2026-10-13
+TPR,TPR,"Tapestry, Inc.",Consumer Discretionary,"Apparel, Accessories & Luxury Goods","New York City, New York",0001116132,,23260592128.0,2026-10-13
+TRGP,TRGP,Targa Resources,Energy,Oil & Gas Storage & Transportation,"Houston, Texas",0001389170,,62300790784.0,2026-10-13
+TGT,TGT,Target Corporation,Consumer Staples,Consumer Staples Merchandise Retail,"Minneapolis, Minnesota",0000027419,,69789065216.0,2026-10-13
+TEL,TEL,TE Connectivity,Information Technology,Electronic Manufacturing Services,"Galway, Ireland",0001385157,,62905430016.0,2026-10-13
+TDY,TDY,Teledyne Technologies,Information Technology,Electronic Equipment & Instruments,"Thousand Oaks, California",0001094285,,28446619648.0,2026-10-13
+TER,TER,Teradyne,Information Technology,Semiconductor Materials & Equipment,"North Reading, Massachusetts",0000097210,,60011397120.0,2026-10-13
+TSLA,TSLA,"Tesla, Inc.",Consumer Discretionary,Automobile Manufacturers,"Austin, Texas",0001318605,,1493047443456.0,2026-10-13
+TXN,TXN,Texas Instruments,Information Technology,Semiconductors,"Dallas, Texas",0000097476,,257298399232.0,2026-10-13
+TPL,TPL,Texas Pacific Land Corporation,Energy,Oil & Gas Exploration & Production,"Dallas, Texas",0001811074,,25197830144.0,2026-10-13
+TXT,TXT,Textron,Industrials,Aerospace & Defense,"Providence, Rhode Island",0000217346,,13033167872.0,2026-10-13
+TMO,TMO,Thermo Fisher Scientific,Health Care,Life Sciences Tools & Services,"Waltham, Massachusetts",0000097745,,244861452288.0,2026-10-13
+TJX,TJX,TJX Companies,Consumer Discretionary,Apparel Retail,"Framingham, Massachusetts",0000109198,,156108308480.0,2026-10-13
+TKO,TKO,TKO Group Holdings,Communication Services,Movies & Entertainment,"New York City, New York",0001973266,,32828831744.0,2026-10-13
+TSCO,TSCO,Tractor Supply,Consumer Discretionary,Other Specialty Retail,"Brentwood, Tennessee",0000916365,,17428793344.0,2026-10-13
+TT,TT,Trane Technologies,Industrials,Building Products,"Dublin, Ireland",0001466258,,105072066560.0,2026-10-13
+TDG,TDG,TransDigm Group,Industrials,Aerospace & Defense,"Cleveland, Ohio",0001260221,,61906386944.0,2026-10-13
+TRV,TRV,Travelers Companies (The),Financials,Property & Casualty Insurance,"New York City, New York",0000086312,,77523165184.0,2026-10-13
+TRMB,TRMB,Trimble Inc.,Information Technology,Application Software,"Westminster, Colorado",0000864749,,13871868928.0,2026-10-13
+TFC,TFC,Truist Financial,Financials,Diversified Banks,"Charlotte, North Carolina",0000092230,,56976646144.0,2026-10-13
+TWLO,TWLO,Twilio,Information Technology,Systems Software,"San Francisco, California",0001447669,,43409571840.0,2026-10-13
+TYL,TYL,Tyler Technologies,Information Technology,Application Software,"Plano, Texas",0000860731,,13921315840.0,2026-10-13
+TSN,TSN,Tyson Foods,Consumer Staples,Packaged Foods & Meats,"Springdale, Arkansas",0000100493,,18846007296.0,2026-10-13
+USB,USB,U.S. Bancorp,Financials,Diversified Banks,"Minneapolis, Minnesota",0000036104,,89463308288.0,2026-10-13
+UBER,UBER,Uber,Industrials,Passenger Ground Transportation,"San Francisco, California",0001543151,,146043043840.0,2026-10-13
+UDR,UDR,"UDR, Inc.",Real Estate,Multi-Family Residential REITs,"Highlands Ranch, Colorado",0000074208,,12497730560.0,2026-10-13
+ULTA,ULTA,Ulta Beauty,Consumer Discretionary,Other Specialty Retail,"Bolingbrook, Illinois",0001403568,,24263581696.0,2026-10-13
+UNP,UNP,Union Pacific Corporation,Industrials,Rail Transportation,"Omaha, Nebraska",0000100885,,167273840640.0,2026-10-13
+UAL,UAL,United Airlines Holdings,Industrials,Passenger Airlines,"Chicago, Illinois",0000100517,,33899530240.0,2026-10-13
+UPS,UPS,United Parcel Service,Industrials,Air Freight & Logistics,"Sandy Springs, Georgia",0001090727,,81113513984.0,2026-10-13
+URI,URI,United Rentals,Industrials,Trading Companies & Distributors,"Stamford, Connecticut",0001067701,,65785331712.0,2026-10-13
+UNH,UNH,UnitedHealth Group,Health Care,Managed Health Care,"Eden Prairie, Minnesota",0000731766,,339757563904.0,2026-10-13
+UHS,UHS,Universal Health Services,Health Care,Health Care Facilities,"King of Prussia, Pennsylvania",0000352915,,10539617280.0,2026-10-13
+VLO,VLO,Valero Energy,Energy,Oil & Gas Refining & Marketing,"San Antonio, Texas",0001035002,,125536370688.0,2026-10-13
+VEEV,VEEV,Veeva Systems,Health Care,Health Care Technology,"Pleasanton, California",0001393052,,47900733440.0,2026-10-13
+VTR,VTR,Ventas,Real Estate,Health Care REITs,"Chicago, Illinois",0000740260,,42851540992.0,2026-10-13
+VLTO,VLTO,Veralto,Industrials,Environmental & Facilities Services,"Waltham, Massachusetts",0001967680,,23940505600.0,2026-10-13
+VRSN,VRSN,Verisign,Information Technology,Internet Services & Infrastructure,"Reston, Virginia",0001014473,,27364081664.0,2026-10-13
+VRSK,VRSK,Verisk Analytics,Industrials,Research & Consulting Services,"Jersey City, New Jersey",0001442145,,23101392896.0,2026-10-13
+VZ,VZ,Verizon,Communication Services,Integrated Telecommunication Services,"New York City, New York",0000732712,,177741283328.0,2026-10-13
+VRTX,VRTX,Vertex Pharmaceuticals,Health Care,Biotechnology,"Boston, Massachusetts",0000875320,,128504692736.0,2026-10-13
+VRT,VRT,Vertiv,Industrials,Electrical Components & Equipment,"Westerville, Ohio",0001674101,,92150767616.0,2026-10-13
+VTRS,VTRS,Viatris,Health Care,Pharmaceuticals,"Pittsburgh, Pennsylvania",0001792044,,20146284544.0,2026-10-13
+VICI,VICI,Vici Properties,Real Estate,Hotel & Resort REITs,"New York City, New York",0001705696,,25357815808.0,2026-10-13
+V,V,Visa Inc.,Financials,Transaction & Payment Processing Services,"San Francisco, California",0001403161,,730798030848.0,2026-10-13
+VST,VST,Vistra Corp.,Utilities,Electric Utilities,"Irving, Texas",0001692819,,53073997824.0,2026-10-13
+VMRK,VMRK,Vivmark Residential,Real Estate,Multi-Family Residential REITs,"Chicago, Illinois",0000906107,,47393972224.0,2026-10-13
+VMC,VMC,Vulcan Materials Company,Materials,Construction Materials,"Birmingham, Alabama",0001396009,,31766226944.0,2026-10-13
+VYLR,VYLR,Vylor,Consumer Staples,Agricultural Products & Services,"Johnston, Iowa",0002128626,,50641616896.0,2026-10-13
+WRB,WRB,W. R. Berkley Corporation,Financials,Property & Casualty Insurance,"Greenwich, Connecticut",0000011544,,27062487040.0,2026-10-13
+GWW,GWW,W. W. Grainger,Industrials,Industrial Machinery & Supplies & Components,"Lake Forest, Illinois",0000277135,,61548216320.0,2026-10-13
+WAB,WAB,Wabtec,Industrials,Construction Machinery & Heavy Transportation Equipment,"Pittsburgh, Pennsylvania",0000943452,,48269651968.0,2026-10-13
+WMT,WMT,Walmart,Consumer Staples,Consumer Staples Merchandise Retail,"Bentonville, Arkansas",0000104169,,899899588608.0,2026-10-13
+DIS,DIS,Walt Disney Company (The),Communication Services,Movies & Entertainment,"Burbank, California",0001744489,,187328249856.0,2026-10-13
+WM,WM,Waste Management,Industrials,Environmental & Facilities Services,"Houston, Texas",0000823768,,84395868160.0,2026-10-13
+WAT,WAT,Waters Corporation,Health Care,Life Sciences Tools & Services,"Milford, Massachusetts",0001000697,,42426109952.0,2026-10-13
+WEC,WEC,WEC Energy Group,Utilities,Electric Utilities,"Milwaukee, Wisconsin",0000783325,,34184859648.0,2026-10-13
+WFC,WFC,Wells Fargo,Financials,Diversified Banks,"San Francisco, California",0000072971,,251959607296.0,2026-10-13
+WELL,WELL,Welltower,Real Estate,Health Care REITs,"Toledo, Ohio",0000766704,,165940527104.0,2026-10-13
+WST,WST,West Pharmaceutical Services,Health Care,Health Care Supplies,"Exton, Pennsylvania",0000105770,,25870129152.0,2026-10-13
+WDC,WDC,Western Digital,Information Technology,"Technology Hardware, Storage & Peripherals","San Jose, California",0000106040,,144840638464.0,2026-10-13
+WY,WY,Weyerhaeuser,Real Estate,Timber REITs,"Seattle, Washington",0000106535,,13650740224.0,2026-10-13
+WSM,WSM,"Williams-Sonoma, Inc.",Consumer Discretionary,Homefurnishing Retail,"San Francisco, California",0000719955,,28132734976.0,2026-10-13
+WMB,WMB,Williams Companies,Energy,Oil & Gas Storage & Transportation,"Tulsa, Oklahoma",0000107263,,90722328576.0,2026-10-13
+WTW,WTW,Willis Towers Watson,Financials,Insurance Brokers,"London, United Kingdom",0001140536,,27715770368.0,2026-10-13
+WDAY,WDAY,"Workday, Inc.",Information Technology,Application Software,"Pleasanton, California",0001327811,,45368250368.0,2026-10-13
+WYNN,WYNN,Wynn Resorts,Consumer Discretionary,Casinos & Gaming,"Paradise, Nevada",0001174922,,7718922752.0,2026-10-13
+XEL,XEL,Xcel Energy,Utilities,Multi-Utilities,"Minneapolis, Minnesota",0000072903,,46329126912.0,2026-10-13
+XYL,XYL,Xylem Inc.,Industrials,Industrial Machinery & Supplies & Components,"White Plains, New York",0001524472,,23953412096.0,2026-10-13
+YUM,YUM,Yum! Brands,Consumer Discretionary,Restaurants,"Louisville, Kentucky",0001041061,,40048234496.0,2026-10-13
+ZBRA,ZBRA,Zebra Technologies,Information Technology,Electronic Equipment & Instruments,"Lincolnshire, Illinois",0000877212,,18362212352.0,2026-10-13
+ZBH,ZBH,Zimmer Biomet,Health Care,Health Care Equipment,"Warsaw, Indiana",0001136869,,17580292096.0,2026-10-13
+ZTS,ZTS,Zoetis,Health Care,Pharmaceuticals,"Parsippany, New Jersey",0001555280,,31260366848.0,2026-10-13

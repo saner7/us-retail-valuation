@@ -39,6 +39,8 @@ def metric(at, label):
 
 
 def choose(at, target, peers):
+    """The manual path: type the target and the peers."""
+    at.radio(key="sel_mode").set_value("Enter tickers manually").run()
     at.text_input(key="form_target").set_value(target)
     at.text_input(key="form_peers").set_value(peers)
     next(b for b in at.button if b.label == "Analyze").click().run()     # the form's submit button
@@ -179,3 +181,53 @@ def test_partial_download_is_explained_at_the_top(monkeypatch):
     texts = [w.value for w in at.warning]
     assert any("Some data could not be downloaded" in t and "TTM EBITDA" in t for t in texts)
     assert any("outside its 52-week range" in t for t in texts)
+
+
+def sidebar_warnings(at):
+    return " ".join(w.value for w in at.sidebar.warning)
+
+
+def test_sp500_path_defaults_to_target_and_its_curated_group(app):
+    at = app
+    assert at.radio(key="sel_mode").value == "Pick from S&P 500"
+    assert at.selectbox(key="sp_target").value == "TGT"
+    assert at.radio(key="sp_source").value == "Curated peer group (analyst judgment)"
+    assert at.multiselect(key="sp_peers").value == ["WMT", "COST", "KR", "DG", "BJ"]
+    assert "Target" in at.title[0].value and "(TGT)" in at.title[0].value
+    assert any("Market caps as of" in c.value for c in at.sidebar.caption)
+
+
+def test_pick_apple_curated_then_gics_with_size_warning(app):
+    at = app
+    at.selectbox(key="sp_target").set_value("AAPL").run()
+    assert at.multiselect(key="sp_peers").value == ["MSFT", "GOOGL", "META", "AMZN"]
+    assert "Peers differ greatly in size" not in sidebar_warnings(at)
+    at.radio(key="sp_source").set_value("GICS suggestion").run()
+    gics = at.multiselect(key="sp_peers").value
+    assert len(gics) == 6 and "DELL" in gics and "GOOG" not in gics
+    assert "Peers differ greatly in size" in sidebar_warnings(at)
+    next(b for b in at.button if b.label == "Analyze").click().run()
+    assert not at.exception
+    assert "(AAPL)" in at.title[0].value
+    assert any("Peers differ greatly in size" in w.value for w in at.warning)          # also at the top
+
+
+def test_edit_the_group_and_restore_the_suggestion(app):
+    at = app
+    at.selectbox(key="sp_target").set_value("KO").run()
+    assert at.multiselect(key="sp_peers").value == ["PEP", "MNST", "KDP"]
+    at.multiselect(key="sp_peers").unselect("MNST").select("PG").run()
+    at.text_input(key="sp_extra").set_value("nestle.sw").run()
+    next(b for b in at.button if b.label == "Analyze").click().run()
+    assert not at.exception
+    assert at.session_state["sel_peers"] == "PEP, KDP, PG, NESTLE.SW"
+    next(b for b in at.button if b.label == "Use suggested peers").click().run()
+    assert at.multiselect(key="sp_peers").value == ["PEP", "MNST", "KDP"]
+
+
+def test_sector_fallback_warning(app):
+    at = app
+    at.selectbox(key="sp_target").set_value("XOM").run()
+    assert "filled from the Energy sector" in sidebar_warnings(at)
+    next(b for b in at.button if b.label == "Analyze").click().run()
+    assert any("filled from the Energy sector" in w.value for w in at.warning)

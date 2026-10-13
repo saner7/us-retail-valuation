@@ -22,6 +22,7 @@ import data_loader as dl
 import dcf
 import export
 import lbo
+import peers
 import precedents
 import scenarios
 import summary
@@ -58,23 +59,115 @@ def money(x):
 
 
 # ---------------------------------------------------------------------------
-# Company selection (a form, so the data is loaded only when the user submits)
+# Company selection: pick from the S&P 500 (with a suggested, editable peer group)
+# or type tickers. Data is loaded only when the user presses Analyze.
 # ---------------------------------------------------------------------------
 
 st.session_state.setdefault("sel_target", config.TARGET)
 st.session_state.setdefault("sel_peers", ", ".join(config.PEERS))
+st.session_state.setdefault("sel_warnings", [])
 st.session_state.setdefault("refresh_token", 0)
 
+MODES = ["Pick from S&P 500", "Enter tickers manually"]
+
+
+@st.cache_data
+def load_peer_files():
+    try:
+        return peers.load_universe(), peers.load_curated(), peers.universe_header()
+    except FileNotFoundError:
+        return None, None, []
+
+
+universe, curated, universe_head = load_peer_files()
+if universe is None:
+    MODES = MODES[1:]
+else:
+    LABELS = dict(zip(universe["yahoo_ticker"], universe["name"] + " (" + universe["yahoo_ticker"] + ")"))
+
+
+def suggestion(target: str, source: str, count: int) -> dict:
+    """{"peers", "reasons", "warnings", "rationale"} for the sidebar."""
+    cur = peers.curated_for(target, curated)
+    if cur and source == peers.CURATED_LABEL:
+        return {"peers": cur["peers"], "reasons": {t: "curated" for t in cur["peers"]}, "warnings": [],
+                "rationale": f"{cur['rationale']} (curated {cur['source_date']})"}
+    s = peers.suggest_peers(target, universe, count)
+    return {"peers": list(s["peers"]["yahoo_ticker"]), "reasons": dict(zip(s["peers"]["yahoo_ticker"],
+                                                                         s["peers"]["reason"])),
+            "warnings": s["warnings"], "rationale": None}
+
+
+def fill_peers(reset_source: bool = False):
+    """Put the suggested group into the editable list (on a new target or 'Use suggested peers')."""
+    t = st.session_state.sp_target
+    if reset_source or st.session_state.get("sp_source") is None:
+        has_curated = peers.curated_for(t, curated) is not None
+        st.session_state.sp_source = peers.CURATED_LABEL if has_curated else peers.GICS_LABEL
+    st.session_state.sp_peers = suggestion(t, st.session_state.sp_source, st.session_state.sp_count)["peers"]
+    st.session_state.sp_extra = ""
+
+
+if universe is not None and "sp_target" not in st.session_state:
+    st.session_state.sp_target = config.TARGET
+    st.session_state.sp_count = config.PEERS_DEFAULT_COUNT
+    fill_peers(reset_source=True)
+
 with st.sidebar:
-    with st.form("company"):
-        st.text_input("Target ticker", value=st.session_state.sel_target, key="form_target",
-                      help="Yahoo Finance symbol, with the exchange suffix outside the US "
-                           "(e.g. RACE.MI for Milan, MC.PA for Paris, CFR.SW for Zurich).")
-        st.text_input("Peer group (comma-separated)", value=st.session_state.sel_peers, key="form_peers",
-                      help=f"Up to {config.MAX_PEERS} comparable companies.")
-        if st.form_submit_button("Analyze", type="primary"):
-            st.session_state.sel_target = st.session_state.form_target
-            st.session_state.sel_peers = st.session_state.form_peers
+    mode = st.radio("Choose the company", MODES, key="sel_mode", horizontal=False)
+    if mode == "Enter tickers manually":
+        with st.form("company"):
+            st.text_input("Target ticker", value=st.session_state.sel_target, key="form_target",
+                          help="Yahoo Finance symbol, with the exchange suffix outside the US "
+                               "(e.g. RACE.MI for Milan, MC.PA for Paris, CFR.SW for Zurich).")
+            st.text_input("Peer group (comma-separated)", value=st.session_state.sel_peers, key="form_peers",
+                          help=f"Up to {config.MAX_PEERS} comparable companies.")
+            if st.form_submit_button("Analyze", type="primary"):
+                st.session_state.sel_target = st.session_state.form_target
+                st.session_state.sel_peers = st.session_state.form_peers
+                st.session_state.sel_warnings = []
+    else:
+        st.selectbox("Company (type to search)", list(LABELS), key="sp_target", format_func=LABELS.get,
+                     on_change=fill_peers, kwargs={"reset_source": True})
+        target_sp = st.session_state.sp_target
+        if peers.curated_for(target_sp, curated):
+            st.radio("Peer suggestion", [peers.CURATED_LABEL, peers.GICS_LABEL], key="sp_source",
+                     on_change=fill_peers)
+        else:
+            st.session_state.sp_source = peers.GICS_LABEL
+        if st.session_state.sp_source == peers.GICS_LABEL:
+            st.number_input("Number of suggested peers", 1, config.MAX_PEERS, key="sp_count", on_change=fill_peers,
+                            help="Kept small by default: every peer is one more download from Yahoo Finance.")
+        sug = suggestion(target_sp, st.session_state.sp_source, st.session_state.sp_count)
+        options = list(LABELS) + [t for t in st.session_state.sp_peers if t not in LABELS]
+        st.multiselect("Peer group (edit freely)", options, key="sp_peers",
+                       format_func=lambda t: LABELS.get(t, t), max_selections=config.MAX_PEERS)
+        st.text_input("Add other tickers (comma-separated)", key="sp_extra",
+                      help="Companies outside the S&P 500 list, e.g. BJ or MC.PA.")
+        chosen = list(st.session_state.sp_peers) + [t.strip().upper() for t in st.session_state.sp_extra.split(",")
+                                                    if t.strip()]
+        side_warnings = list(sug["warnings"])
+        if (w := peers.size_warning(target_sp, chosen, universe)):
+            side_warnings.append(w)
+        for w in side_warnings:
+            st.warning(w)
+        b1, b2 = st.columns(2)
+        b1.button("Use suggested peers", on_click=fill_peers)
+        if b2.button("Analyze", type="primary"):
+            st.session_state.sel_target = target_sp
+            st.session_state.sel_peers = ", ".join(chosen)
+            # the bank / insurer warning is already shown at the top by summary.analysis_warnings
+            st.session_state.sel_warnings = [w for w in side_warnings if "bank or insurer" not in w]
+        with st.expander("Why these peers"):
+            if sug["rationale"]:
+                st.markdown(f"**{peers.CURATED_LABEL}.** {sug['rationale']}")
+            table = peers.peer_table(target_sp, chosen, universe, sug["reasons"])
+            st.dataframe(table, hide_index=True, width="stretch",
+                         column_config={"Market cap ($bn)": st.column_config.NumberColumn(format="%.0f"),
+                                        "Size vs target": st.column_config.NumberColumn(format="%.2fx")})
+            st.caption(peers.NOTE)
+            st.caption(f"Market caps as of {peers.market_cap_dates(universe)} (Yahoo Finance). "
+                       + " ".join(universe_head[:1]))
 
 TARGET, PEERS, selection_notes = summary.parse_tickers(st.session_state.sel_target, st.session_state.sel_peers)
 if not TARGET:
@@ -402,6 +495,9 @@ st.caption(f"Trading comparables, precedent transactions, LBO and DCF with scena
 
 for note in selection_notes:
     st.info(note)
+if st.session_state.sel_target == TARGET:
+    for w in st.session_state.sel_warnings:
+        st.warning(w)
 for w in summary.data_warnings(data, TARGET, PEERS) + \
         summary.analysis_warnings(data, TARGET, PEERS + [t for t in data["errors"] if t != TARGET]):
     (st.warning if w["level"] == "warning" else st.info)(w["text"])
@@ -458,7 +554,7 @@ with tab_summary:
         r3.metric("Exit EV/EBITDA", mult(reverse["exit_multiple"]),
                   f"model {mult(kw['exit_multiple'])}", delta_color="off", delta_arrow="off")
 
-    for w in result["warnings"]:
+    for w in result["warnings"] + ([lw] if (lw := summary.wacc_warning(model)) else []):
         st.warning(w)
 
     with st.expander("Football field data"):

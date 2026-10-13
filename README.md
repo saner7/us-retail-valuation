@@ -11,7 +11,8 @@ Kroger (KR), Dollar General (DG) and BJ's Wholesale Club (BJ)**.
 It combines a trading-comparables analysis, precedent transactions (what acquirers paid for
 similar US retailers), a leveraged buyout (LBO) analysis (what a private equity fund could pay)
 and a discounted cash flow (DCF) model with Bear / Base / Bull scenarios, and summarises them in a "football field" chart, the way an investment banking pitch book would.
-Any other listed company can be analysed by typing its ticker and peers in the app.
+Any other company can be analysed: pick it from the S&P 500 (the app suggests an editable peer
+group) or type any Yahoo Finance ticker and its peers.
 
 > Built as a learning project by an IB Diploma student interested in economics, finance and
 > investment banking.
@@ -31,6 +32,7 @@ Any other listed company can be analysed by typing its ticker and peers in the a
 | B | Bear / Base / Bull scenarios and a probability-weighted value | Done |
 | C | Precedent transactions (EV/EBITDA) with SEC sources | Done |
 | L | LBO analysis: sources & uses, debt schedule, IRR / MOIC, maximum price, Excel sheet | Done |
+| S | Pick from the S&P 500 with a suggested, editable peer group (GICS, size, curated groups) | Done |
 
 ## Methodology
 
@@ -390,6 +392,17 @@ EBITDAR, i.e. before rent) is also consistent, but Yahoo does not report rent fo
 - **LBO**: the debt terms, fees and minimum cash are illustrative assumptions, not market quotes;
   `^IRX` is only a proxy for SOFR, and rates are held flat. See the simplifications in the LBO
   section.
+- **Peer suggestions**: GICS does not always give the best peer group (Apple is classified with
+  hardware makers but is valued like the platform companies; Ferrari as an automaker but trades
+  like a luxury brand). Suggestions cover the S&P 500 only, and the market caps used to rank them
+  are from one date (13 October 2026). On the live app, Yahoo may block some of the downloads for a
+  larger group; the app then lists the missing fields.
+- **Cyclical sectors**: the DCF defaults use the last three years' averages, which can mislead in
+  cyclical industries such as energy, where those years may sit at a high or low point of the
+  commodity cycle. For ExxonMobil the default Gordon value was $299 against a $172 price, helped by
+  a low beta (0.21) and so a low WACC (6.2%). Review the margin, capex and WACC inputs by hand.
+- **Banks and insurers**: Yahoo reports no EBITDA, lease or capex lines for them, so EV multiples,
+  the DCF and the LBO stay N/A; P/E and P/B are shown instead.
 
 ## Project structure
 ```
@@ -402,10 +415,14 @@ charts.py              Plotly charts (football field, sensitivity heatmap, scena
 scenarios.py           Bear / Base / Bull scenarios and the probability-weighted value
 precedents.py          precedent transactions: loading, filters, EV/EBITDA range
 lbo.py                 LBO: sources & uses, debt schedule, IRR / MOIC, maximum price
+peers.py               peer suggestions: GICS sub-industry, sector fallback, size, curated groups
+build_universe.py      downloads the S&P 500 list (Wikipedia) and market caps (Yahoo)
 export.py              Excel export (DCF, WACC, Scenarios and LBO as live formulas)
 app.py                 Streamlit app
 data/manual_overrides.csv
 data/precedents.csv    precedent transactions with SEC sources
+data/sp500_universe.csv  S&P 500 constituents, GICS and market caps (source and dates in its header)
+data/curated_peers.csv analyst-chosen peer groups with their rationale
 data/cache/            downloaded data (not in git)
 data/snapshot/         saved copy of the data, used only if the live download fails
 .streamlit/config.toml app theme and settings (also used by Streamlit Community Cloud)
@@ -425,6 +442,7 @@ pip install -r requirements-dev.txt   # or requirements.txt if you don't need th
 python data_loader.py            # snapshot, annual history and data quality report
 python data_loader.py --refresh  # ignore the 24h cache and download again
 python data_loader.py --refresh --save-snapshot   # also update the committed fallback data
+python build_universe.py         # refresh the S&P 500 list and market caps (~10 min)
 python comps.py                  # comparable companies analysis
 python dcf.py                    # DCF valuation in the terminal
 python dcf.py --html             # also save sensitivity heatmaps to output/
@@ -445,9 +463,46 @@ variable rather than in the code (the SEC rejects requests without one):
   opens with the saved data in `data/snapshot/` and shows a warning saying so. Refresh the
   snapshot from time to time with `python data_loader.py --refresh --save-snapshot` and push it.
 
+## Picking a company and its peers (Stage S)
+The sidebar offers two ways in: **Pick from S&P 500** (searchable by name or ticker) or **Enter
+tickers manually** (any Yahoo Finance symbol, e.g. companies outside the S&P 500 such as `RACE.MI`).
+The app opens on Target and its usual peer group, as before.
+
+- **Universe** (`data/sp500_universe.csv`): the S&P 500 constituents from Wikipedia's
+  [List of S&P 500 companies](https://en.wikipedia.org/wiki/List_of_S%26P_500_companies)
+  (revision 1379247819, downloaded 13 October 2026: 503 share classes, 500 companies) with their
+  GICS sector and sub-industry, headquarters and SEC CIK, plus a one-off Yahoo Finance market cap
+  (13 October 2026), so the app does not send 500 requests on start-up. GICS (Global Industry
+  Classification Standard) is the MSCI / S&P system that sorts companies into 11 sectors and
+  about 160 sub-industries; GICS classifications are maintained by MSCI and S&P, and this list is
+  taken from Wikipedia for educational use. Refresh it with `python build_universe.py` (about ten
+  minutes, one slow request per company).
+- **Suggestion rules** (`peers.py`):
+  1. never the target's other share classes (same CIK, e.g. GOOGL / GOOG), and one class per peer;
+  2. the target's GICS sub-industry first;
+  3. if fewer than 3 other companies share it, fill up from the same sector (flagged as a
+     fallback); with 3 or more, a small but similar group is preferred;
+  4. closest in size first (log difference of market caps, so twice and half as big are equally
+     far); 6 peers by default, up to 10 (each peer is one more download from Yahoo).
+- **Curated groups** (`data/curated_peers.csv`) come first when the target is listed, labelled
+  *Curated peer group (analyst judgment)* with their rationale: Apple against the large platform
+  companies (MSFT, GOOGL, META, AMZN) rather than its GICS hardware peers, and Target's usual group.
+  The GICS suggestion is one click away.
+- The group stays editable (remove, add from the S&P 500 or type other tickers; *Use suggested
+  peers* restores it), and a table shows each peer's sub-industry, market cap, size relative to the
+  target and why it was chosen.
+- **Warnings**: sector fallback; peers that are all below 1/10 or above 10x the target's market
+  cap ("multiples may not be comparable"); and, for any company, a WACC less than 2 points above
+  the risk-free rate, which usually comes from a low beta (ExxonMobil: WACC 6.2%, beta 0.21).
+- Examples from the 13 October data: Coca-Cola gets PepsiCo, Monster and Keurig Dr Pepper; JPMorgan
+  the other diversified banks (with the financial-company warning); ExxonMobil shares its
+  sub-industry only with Chevron, so refiners and pipelines fill the group; Garmin is alone in
+  *Consumer Electronics* and gets eBay, Nike and Ford, which shows why the fallback is flagged.
+  54 of the 126 sub-industries have at most two companies.
+
 ## Analysing other companies
-Type any Yahoo Finance ticker and a comma-separated peer group (up to 10) in the app's sidebar;
-the default set is in `config.py`. Things to know:
+Pick a company from the S&P 500 or type any Yahoo Finance ticker and a comma-separated peer group
+(up to 10) in the app's sidebar; the default set is in `config.py`. Things to know:
 - Outside the US use the exchange suffix (e.g. `RACE.MI` Milan, `MC.PA` Paris, `CFR.SW` Zurich).
 - Amounts are shown in the target's trading currency. Companies that report in a different
   currency than they trade in (e.g. Ferrari on the NYSE) are converted at the latest exchange rate.

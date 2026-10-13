@@ -780,10 +780,10 @@ def _sensitivity_sheet(wb, tables, price, ccy):
         _put(ws, row, 1, "WACC", bold=True, fill=HEADER_FILL)
         for j, x in enumerate(t.columns, start=2):
             _put(ws, row, j, x, colfmt, bold=True, fill=HEADER_FILL)
-        for i, w in enumerate(t.index, start=row + 1):
-            _put(ws, i, 1, w, FMT_PCT, bold=True)
-            for j, x in enumerate(t.columns, start=2):
-                _put(ws, i, j, t.loc[w, x], price_format(ccy))
+        for i, w in enumerate(t.index):
+            _put(ws, row + 1 + i, 1, w, FMT_PCT, bold=True)
+            for j in range(len(t.columns)):        # by position: labels can all be NaN (no exit multiple)
+                _put(ws, row + 1 + i, 2 + j, t.iat[i, j], price_format(ccy))
         row += len(t) + 3
     _widths(ws, {"A": 12})
 

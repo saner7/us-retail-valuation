@@ -125,3 +125,10 @@ def test_lbo_sheet_formulas_match_python(data, tmp_path, switch):
     assert ws[f"F{_row(ws, 'Total debt, end')}"].value == pytest.approx(
         r["schedule"].loc["Total debt, end"].iloc[-1] / 1e6, abs=1e-6)
     assert ws[f"C{_row(ws, 'Taxes')}"].value == pytest.approx(r["schedule"].loc["Taxes", "Year 1"] / 1e6)
+
+
+def test_workbook_without_exit_multiple(data):
+    """Banks: no peer EBITDA, so no exit multiple; the sensitivity headers are all empty."""
+    raw, _ = workbook(data, exit_multiple=float("nan"))
+    ws = load_workbook(io.BytesIO(raw))["Sensitivity"]
+    assert any(c.value == "WACC (rows) x exit EV/EBITDA (columns)" for c in ws["A"])

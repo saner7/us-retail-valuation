@@ -283,3 +283,10 @@ def test_lease_liabilities_row_missing_but_debt_has_no_leases():
     bq.loc["Capital Lease Obligations"] = [9.0, 8.0]                     # the usual case
     assert dl.lease_liabilities(bq)[:2] == (9.0, d1)
     assert math.isnan(dl.lease_liabilities(pd.DataFrame())[0])
+
+
+def test_annual_history_uses_alternative_row_names():
+    years = pd.to_datetime(["2024-12-31", "2025-12-31"])
+    cf = pd.DataFrame({y: [5.0, -9.0] for y in years}, index=["Depreciation Amortization Depletion", "Capital Expenditure"])
+    hist = dl.annual_history({"cashflow": cf, "income": pd.DataFrame()})
+    assert list(hist["d_and_a"]) == [5.0, 5.0]           # like ExxonMobil: D&A reported with depletion
