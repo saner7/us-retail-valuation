@@ -81,9 +81,11 @@ def suggest_peers(target: str, universe: pd.DataFrame, n: int = None) -> dict:
 
     warnings = []
     if fallback:
-        warnings.append(f"Only {len(same_sub)} other S&P 500 companies share the sub-industry "
-                        f"'{row['gics_sub_industry']}', so the group is filled from the {row['gics_sector']} "
-                        "sector (broader and less comparable).")
+        k = len(same_sub)
+        count = "No other S&P 500 company shares" if k == 0 else \
+            f"Only {k} other S&P 500 compan{'y shares' if k == 1 else 'ies share'}"
+        warnings.append(f"{count} the sub-industry '{row['gics_sub_industry']}', so the group is filled from the "
+                        f"{row['gics_sector']} sector (broader and less comparable).")
     if is_financial(row["gics_sub_industry"]):
         warnings.append(f"{row['yahoo_ticker']} is a bank or insurer: EV/EBITDA and an FCFF DCF do not fit "
                         "financial companies; P/E and P/B are more meaningful.")

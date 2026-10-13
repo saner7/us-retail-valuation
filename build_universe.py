@@ -83,7 +83,8 @@ def save(df: pd.DataFrame, revid: str | None, path=None) -> None:
     header = [
         f"# Source: {URL}" + (f" (revision {revid})" if revid else ""),
         f"# Downloaded: {date.today().isoformat()}; market caps: Yahoo Finance marketCap"
-        + (f", {caps.min()} to {caps.max()}" if not caps.empty else ", not downloaded"),
+        + ((f", {caps.min()}" if caps.min() == caps.max() else f", {caps.min()} to {caps.max()}")
+           if not caps.empty else ", not downloaded"),
         f"# {NOTE}",
     ]
     with open(path, "w", newline="") as f:
