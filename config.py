@@ -132,6 +132,8 @@ BULL_EXIT_CAP_VS_OWN = 1.35
 # --- Precedent transactions (Stage C) ----------------------------------------
 PRECEDENTS_PATH = DATA_DIR / "precedents.csv"
 UNIVERSE_PATH = DATA_DIR / "sp500_universe.csv"      # build_universe.py
+YAHOO_RETRIES = 2                 # extra tries when Yahoo answers with nothing
+YAHOO_RETRY_PAUSE = 2.0           # seconds between them
 CURATED_PEERS_PATH = DATA_DIR / "curated_peers.csv"  # analyst-chosen groups, used before GICS
 PEERS_SIZE_GAP = 10               # every peer below 1/10 or above 10x the target: size warning
 PEERS_DEFAULT_COUNT = 6           # suggested peers; kept small to limit Yahoo requests

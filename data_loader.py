@@ -11,8 +11,10 @@ All money values are in USD (full units, not millions).
 from __future__ import annotations
 
 import argparse
+import functools
 import json
 import math
+import time
 import warnings
 from datetime import datetime, timedelta
 
@@ -92,6 +94,11 @@ class TickerNotFound(Exception):
     """Yahoo has no stock quote for this symbol (typo, delisted, or not a stock)."""
 
 
+class YahooEmpty(Exception):
+    """Yahoo returned nothing for a ticker known to be valid (an S&P 500 constituent):
+    usually a temporary block on the server, not a wrong symbol."""
+
+
 class DataUnavailable(Exception):
     """The download failed and there is no cached or saved copy to fall back on."""
 
@@ -100,14 +107,41 @@ class DataUnavailable(Exception):
 # 1) Downloading
 # ---------------------------------------------------------------------------
 
-def fetch_from_yahoo(ticker: str) -> dict:
-    """Download one company's snapshot + annual statements. Needs internet."""
-    tk = yf.Ticker(ticker)
-    info = tk.info or {}
+@functools.lru_cache(maxsize=1)
+def known_tickers() -> frozenset:
+    """Yahoo tickers known to be valid: the S&P 500 universe file (empty set if it is missing)."""
+    try:
+        df = pd.read_csv(config.UNIVERSE_PATH, comment="#", usecols=["yahoo_ticker"])
+        return frozenset(df["yahoo_ticker"])
+    except (FileNotFoundError, ValueError):
+        return frozenset()
+
+
+def _is_empty(info: dict) -> bool:
     # An unknown symbol does not raise an error in yfinance: it returns empty fields
-    if info.get("quoteType") is None and not isinstance(info.get("marketCap"), (int, float)):
+    return info.get("quoteType") is None and not isinstance(info.get("marketCap"), (int, float))
+
+
+def fetch_from_yahoo(ticker: str) -> dict:
+    """Download one company's snapshot + annual statements. Needs internet.
+    An empty answer is retried YAHOO_RETRIES times after a short pause (Yahoo
+    sometimes answers a blocked server with nothing)."""
+    tk = yf.Ticker(ticker)
+    for attempt in range(config.YAHOO_RETRIES + 1):
+        info = tk.info or {}
+        if not _is_empty(info):
+            break
+        if attempt < config.YAHOO_RETRIES:
+            time.sleep(config.YAHOO_RETRY_PAUSE)
+            tk = yf.Ticker(ticker)
+    if _is_empty(info):
+        if ticker.upper() in known_tickers():
+            raise YahooEmpty(f"Yahoo Finance did not return data for {ticker}. This is usually a temporary block "
+                             "on the hosting server, not a wrong ticker. Wait a minute and press Analyze again, "
+                             "or run the app locally.")
         raise TickerNotFound(f"{ticker}: Yahoo Finance has no quote for this symbol. Check the spelling "
-                             f"and the exchange suffix (e.g. RACE.MI for Milan, MC.PA for Paris).")
+                             f"and the exchange suffix (e.g. RACE.MI for Milan, MC.PA for Paris), or Yahoo may "
+                             "be temporarily blocking requests from this server.")
     if info.get("quoteType") not in (None, "EQUITY"):
         raise TickerNotFound(f"{ticker}: this is a {info.get('quoteType')}, not a company's stock.")
 
@@ -220,6 +254,8 @@ def get_company_raw(ticker: str, refresh: bool = False) -> dict:
         raise
     except Exception as e:
         fallback = cached or load_company_cache(ticker, config.SNAPSHOT_DIR)
+        if fallback is None and isinstance(e, YahooEmpty):
+            raise DataUnavailable(str(e)) from e
         if fallback:
             source = "old cache" if cached else "snapshot"
             fallback["meta"]["data_source"] = source
