@@ -268,3 +268,18 @@ def test_committed_snapshot_covers_every_ticker():
     for t in config.ALL_TICKERS:
         assert dl.load_company_cache(t, config.SNAPSHOT_DIR) is not None, t
     assert (config.SNAPSHOT_DIR / "risk_free_rate.json").exists()
+
+
+def test_lease_liabilities_row_missing_but_debt_has_no_leases():
+    d1, d0 = pd.Timestamp("2026-06-30"), pd.Timestamp("2026-03-31")
+    rows = {"Long Term Debt And Capital Lease Obligation": [71.0, 74.0], "Long Term Debt": [71.0, 74.0],
+            "Current Debt And Capital Lease Obligation": [13.0, 10.0], "Current Debt": [13.0, 10.0]}
+    bq = pd.DataFrame(rows, index=[d1, d0]).T
+    value, date, note = dl.lease_liabilities(bq)          # like Apple: no lease line, debt lines equal
+    assert value == 0.0 and date == d1 and "no leases" in note
+    bq.loc["Long Term Debt And Capital Lease Obligation", d1] = 80.0     # leases inside: unknown amount
+    value, date, note = dl.lease_liabilities(bq)
+    assert math.isnan(value) and note is None
+    bq.loc["Capital Lease Obligations"] = [9.0, 8.0]                     # the usual case
+    assert dl.lease_liabilities(bq)[:2] == (9.0, d1)
+    assert math.isnan(dl.lease_liabilities(pd.DataFrame())[0])

@@ -63,3 +63,32 @@ def test_reverse_dcf_hits_the_price(data):
         arg = {"wacc": "wacc_rate"}.get(key, key)
         value = dcf.run_dcf(**{**kw, arg: rev[key]})[method]["value_per_share"]
         assert value == pytest.approx(kw["price"], rel=1e-6)
+
+
+def test_data_warnings_list_missing_fields_and_52_week_mismatch():
+    data = make_data()
+    assert summary.data_warnings(data, "TGT", ["WMT", "COST"]) == []
+    c = data["companies"]["WMT"]
+    c["sources"]["lease_liabilities"] = "missing"
+    c["values"]["lease_liabilities"] = float("nan")
+    t = data["companies"]["TGT"]["values"]
+    t["high_52w"] = t["price"] * 0.9
+    w = summary.data_warnings(data, "TGT", ["WMT", "COST"])
+    assert w[0]["text"].startswith("Some data could not be downloaded")
+    assert "**WMT**: lease liabilities (N/A as a result: net debt and EV: EV multiples and DCF)" in w[0]["text"]
+    assert "outside its 52-week range" in w[1]["text"] and "TGT" in w[1]["text"]
+
+
+def test_football_field_axis_includes_price_bars_and_labels():
+    import charts
+    import pandas as pd
+    rows = pd.DataFrame([{"label": "52-week trading range", "group": "Market", "low": 243.0, "mid": float("nan"),
+                          "high": 306.0, "basis": ""},
+                         {"label": "Comps: P / E", "group": "Trading comps", "low": 180.0, "mid": 220.0,
+                          "high": 260.0, "basis": ""}])
+    fig = charts.football_field(rows, 341.0, "t")                 # price above every bar (AAPL case)
+    lo, hi = fig.layout.xaxis.range
+    assert lo < 180.0 and hi > 341.0 + 5
+    fig = charts.football_field(rows, 100.0, "t")                 # price below every bar
+    lo, hi = fig.layout.xaxis.range
+    assert lo < 100.0 and hi > 306.0

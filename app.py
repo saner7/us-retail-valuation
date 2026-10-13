@@ -328,7 +328,8 @@ st.caption(f"Trading comparables, precedent transactions and DCF with scenarios.
 
 for note in selection_notes:
     st.info(note)
-for w in summary.analysis_warnings(data, TARGET, PEERS + [t for t in data["errors"] if t != TARGET]):
+for w in summary.data_warnings(data, TARGET, PEERS) + \
+        summary.analysis_warnings(data, TARGET, PEERS + [t for t in data["errors"] if t != TARGET]):
     (st.warning if w["level"] == "warning" else st.info)(w["text"])
 
 # If Yahoo blocked the download (common on shared cloud servers), say which saved data is shown
