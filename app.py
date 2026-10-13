@@ -326,8 +326,11 @@ for k, v in LBO_DEFAULTS.items():
 
 with st.sidebar:
     fetched = companies[TARGET]["meta"].get("fetched_at", "")
-    st.caption(f"Data: Yahoo Finance, fetched {fetched.replace('T', ' ')}. Peers used: "
-               f"{', '.join(PEERS) or 'none'}. Amounts in {CCY}.")
+    snap = dl.snapshot_date(TARGET)
+    source = companies[TARGET]["meta"].get("data_source", "live")
+    st.caption(f"Data: Yahoo Finance, {'live' if source == 'live' else 'saved'} data fetched "
+               f"{fetched.replace('T', ' ')}. Saved fallback data for {TARGET}: {snap or 'none'}. "
+               f"Peers used: {', '.join(PEERS) or 'none'}. Amounts in {CCY}.")
     c1, c2 = st.columns(2)
     if c1.button("Refresh data", help="Ignore the 24h cache and download again"):
         st.session_state.refresh_token += 1
@@ -510,8 +513,8 @@ stale = {name: src for name, src in dl.data_sources(data).items() if src != "liv
 if stale:
     dates = sorted({companies[t]["meta"]["fetched_at"][:10] for t in stale if t in companies}
                    | ({data["risk_free"]["fetched_at"][:10]} if "risk_free_rate" in stale else set()))
-    st.warning(f"Live download from Yahoo Finance failed, so saved data is shown for {', '.join(stale)} "
-               f"(from {', '.join(dates)}). Try **Refresh data** later.")
+    st.warning(f"Live data unavailable; showing saved data as of {', '.join(dates)} for {', '.join(stale)}. "
+               "Yahoo Finance often blocks shared cloud servers for a while: try **Refresh data** later.")
 
 tab_summary, tab_dcf, tab_lbo, tab_sc, tab_comps, tab_prec, tab_data = st.tabs(
     ["Summary", "DCF", "LBO", "Scenarios", "Comps", "Precedent Transactions", "Data & quality"])

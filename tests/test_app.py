@@ -250,3 +250,18 @@ def test_failed_download_is_not_cached(monkeypatch):
     assert any("did not return data for TGT" in e.value for e in at.error)
     at.run()                                               # e.g. pressing Analyze again
     assert not at.error and "(TGT)" in at.title[0].value
+
+
+def test_saved_data_banner_and_snapshot_date(monkeypatch):
+    def saved(tickers=None, refresh=False):
+        data = fake_load_all(tickers, refresh)
+        data["companies"][tickers[0]]["meta"]["data_source"] = "snapshot"
+        return data
+    monkeypatch.setattr(dl, "load_all", saved)
+    monkeypatch.setattr(dl, "load_overrides", lambda path=None: pd.DataFrame(columns=dl.OVERRIDE_COLUMNS))
+    st.cache_data.clear()
+    at = AppTest.from_file("../app.py", default_timeout=60)
+    at.run()
+    assert any(w.value.startswith("Live data unavailable; showing saved data as of 2026-10-12 for TGT")
+               for w in at.warning)
+    assert any("Saved fallback data for TGT:" in c.value for c in at.sidebar.caption)
