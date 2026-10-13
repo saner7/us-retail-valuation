@@ -130,6 +130,9 @@ BULL_EXIT_CAP_VS_OWN = 1.35
 
 # --- Precedent transactions (Stage C) ----------------------------------------
 PRECEDENTS_PATH = DATA_DIR / "precedents.csv"
+UNIVERSE_PATH = DATA_DIR / "sp500_universe.csv"      # build_universe.py
+PEERS_DEFAULT_COUNT = 6           # suggested peers; kept small to limit Yahoo requests
+PEERS_MIN_SUB_INDUSTRY = 3        # fewer same-sub-industry peers than this: fill from the sector
 # Fewer deals than this in the calculation -> "small sample" warning
 PRECEDENT_SMALL_SAMPLE = 5
 # Yahoo country + industry -> the `sector` codes used in precedents.csv. The
