@@ -118,3 +118,28 @@ def test_feasibility_compares_with_largest_deal():
     big.update(price=10.0, shares_outstanding=1e10)
     text = " ".join(lbo.feasibility(lbo.run_lbo({**RUN_KWARGS, "base_revenue": 1e11}, big, inputs())))
     assert "largest sponsor buyout on record" in text and "Electronic Arts" in text
+
+
+def test_sensitivity_tables():
+    inp = inputs(exit_year=5)
+    t = lbo.irr_entry_exit(RUN_KWARGS, VALUES, inp)
+    entry = lbo.run_lbo(RUN_KWARGS, VALUES, inp)["entry"]["entry_multiple"]          # 6.75x
+    assert list(t.index) == pytest.approx([4.75, 5.75, 6.75, 7.75, 8.75])
+    assert list(t.columns[:3]) == pytest.approx([4.5, 5.5, 6.5]) and t.columns[3] == lbo.EXIT_EQUALS_ENTRY
+    # middle row, "= entry" column: exit at the entry multiple
+    same = lbo.run_lbo(RUN_KWARGS, VALUES, inputs(exit_year=5, entry_multiple=entry, exit_multiple=entry))
+    assert t.loc[entry, lbo.EXIT_EQUALS_ENTRY] == pytest.approx(same["returns"]["irr"])
+    assert (t[5.5].diff().dropna() < 0).all()                  # paying more lowers the IRR
+    lev = lbo.irr_leverage_exit(RUN_KWARGS, VALUES, inp)
+    # 4x total = the case itself (TLB 3x + notes 1x)
+    assert lev.loc[4.0, 5.5] == pytest.approx(lbo.run_lbo(RUN_KWARGS, VALUES, inp)["returns"]["irr"])
+    assert lev.columns[3] == pytest.approx(entry)
+
+
+def test_football_field_row():
+    inp = inputs(exit_year=5)
+    row = lbo.football_field_row(RUN_KWARGS, VALUES, inp)
+    rng = lbo.price_range(RUN_KWARGS, VALUES, inp)
+    assert row["label"] == "LBO analysis (15%-25% IRR)" and row["group"] == "LBO"
+    assert (row["low"], row["mid"], row["high"]) == (rng["low"], rng["mid"], rng["high"])
+    assert row["low"] < row["mid"] < row["high"]

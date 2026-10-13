@@ -666,7 +666,8 @@ def load_company(ticker: str, overrides: pd.DataFrame, refresh: bool = False) ->
 
 
 def load_all(tickers=None, refresh: bool = False) -> dict:
-    """Load every company plus the risk-free rate. This is what the app calls.
+    """Load every company plus the risk-free rate (and, for USD, the 13-week
+    T-bill used as the LBO's floating base rate). This is what the app calls.
 
     The first ticker is the target; the risk-free rate follows its trading
     currency. A company that cannot be loaded does not stop the others: it is
@@ -681,8 +682,11 @@ def load_all(tickers=None, refresh: bool = False) -> dict:
             errors[t] = str(e)
     target = tickers[0]
     currency = companies[target]["meta"].get("currency") if target in companies else None
+    currency = currency or "USD"
+    short = get_short_rate(refresh) if currency == "USD" else \
+        {"rate": np.nan, "date": None, "fetched_at": None, "data_source": "manual"}
     return {"companies": companies, "errors": errors, "target": target,
-            "risk_free": get_risk_free_rate(currency or "USD", refresh)}
+            "risk_free": get_risk_free_rate(currency, refresh), "short_rate": short}
 
 
 def data_sources(data: dict) -> dict:

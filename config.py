@@ -154,7 +154,7 @@ FF_GROWTH_DELTA = 0.005
 FF_MULTIPLE_DELTA = 1.0
 # Rows of the football field, top to bottom. P/B stays in the comps tables but is
 # not on the chart (see comps.MULTIPLE_NOTES).
-FOOTBALL_FIELD_ROWS = ["52w", "ev_ebitda", "pe", "ev_sales", "prec_ev_ebitda", "dcf_exit", "dcf_gordon"]
+FOOTBALL_FIELD_ROWS = ["52w", "ev_ebitda", "pe", "ev_sales", "prec_ev_ebitda", "lbo", "dcf_exit", "dcf_gordon"]
 
 # --- LBO (leveraged buyout) -------------------------------------------------
 # Every number below is an ILLUSTRATIVE ASSUMPTION (not market data): a typical

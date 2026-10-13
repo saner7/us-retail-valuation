@@ -20,7 +20,6 @@ the Excel version) has no circular reference. Run `python lbo.py` for TGT.
 """
 
 import copy
-import math
 
 import numpy as np
 import pandas as pd
@@ -76,7 +75,8 @@ def tranche_rate(t: dict) -> float:
 def current_multiple(values: dict) -> float:
     """The target's EV/EBITDA at today's share price (no premium)."""
     market_cap = values.get("market_cap") or values["price"] * values["shares_outstanding"]
-    return (market_cap + values["net_debt"]) / values["ebitda_ttm"]
+    ebitda = values["ebitda_ttm"]
+    return (market_cap + values["net_debt"]) / ebitda if ebitda and ebitda > 0 else np.nan
 
 
 def entry_terms(values: dict, inputs: dict) -> dict:
@@ -84,6 +84,8 @@ def entry_terms(values: dict, inputs: dict) -> dict:
     Entry EV = offer price x shares + existing net debt (the buyer takes on,
     and here repays, the debt)."""
     ebitda0, shares, price = values["ebitda_ttm"], values["shares_outstanding"], values["price"]
+    if not (ebitda0 and ebitda0 > 0):
+        ebitda0 = np.nan          # no LBO on zero or negative EBITDA: everything becomes N/A
     if inputs.get("entry_multiple") is not None:
         ev = inputs["entry_multiple"] * ebitda0
         offer = (ev - values["net_debt"]) / shares
@@ -242,45 +244,99 @@ def lbo_warnings(r: dict) -> list:
 # Reverse: highest price for a target IRR
 # ---------------------------------------------------------------------------
 
-def _irr_at_price(run_kwargs, values, inputs, price):
-    inp = {**inputs, "entry_multiple": None, "premium": price / values["price"] - 1}
-    r = run_lbo(run_kwargs, values, inp)
-    if r["sources_uses"]["sponsor_equity"] <= 0:
-        return math.inf
-    return r["returns"]["irr"]
+def max_price(run_kwargs: dict, values: dict, inputs: dict, target_irr: float = None, result: dict = None) -> float:
+    """Highest offer price per share at which the sponsor still earns `target_irr`.
 
-
-def max_price(run_kwargs: dict, values: dict, inputs: dict, target_irr: float = None,
-              tol: float = 1e-4) -> float:
-    """Highest offer price per share at which the sponsor still earns
-    `target_irr`. The exit multiple is fixed at its value in the run with the
-    user's inputs (by default the current trading multiple; see SIMPLIFICATIONS). NaN if no price in a wide range works."""
+    With the exit multiple fixed (by default the current trading multiple; see
+    SIMPLIFICATIONS), nothing after closing depends on the price: the debt is
+    sized on EBITDA, so the cash flows and the exit equity are the same. The
+    price only changes the sponsor's cheque, so it can be solved directly
+    (the same formula is used in the Excel sheet):
+        equity needed = exit equity / (1 + IRR) ^ years
+        equity = price x shares x (1 + fee%) + fee% x net debt + existing debt
+                 + financing fees - new debt - existing cash used
+    NaN if the exit equity is not positive."""
     target_irr = inputs["target_irr"] if target_irr is None else target_irr
-    base = run_lbo(run_kwargs, values, inputs)
-    fixed = {**inputs, "exit_multiple": base["exit"]["multiple"]}
-    lo, hi = values["price"] * 0.01, values["price"] * 5
-    f_lo = _irr_at_price(run_kwargs, values, fixed, lo)
-    f_hi = _irr_at_price(run_kwargs, values, fixed, hi)
-    if not (f_lo >= target_irr >= f_hi):
+    r = result or run_lbo(run_kwargs, values, inputs)
+    su, x = r["sources_uses"], r["exit"]
+    if not x["equity"] > 0:
         return np.nan
-    for _ in range(200):                    # IRR falls as the price rises
-        mid = (lo + hi) / 2
-        if _irr_at_price(run_kwargs, values, fixed, mid) >= target_irr:
-            lo = mid
-        else:
-            hi = mid
-        if hi - lo < tol:
-            break
-    return (lo + hi) / 2
+    needed = x["equity"] / (1 + target_irr) ** x["year"]
+    t = inputs["transaction_fee_pct"]
+    rest = (values["debt_for_ev"] + t * values["net_debt"] + su["uses"]["Financing fees"]
+            - su["total_debt"] - su["sources"]["Existing cash above minimum"])
+    return (needed - rest) / (values["shares_outstanding"] * (1 + t))
 
 
-def price_range(run_kwargs: dict, values: dict, inputs: dict) -> dict:
+def price_range(run_kwargs: dict, values: dict, inputs: dict, result: dict = None) -> dict:
     """Max price at the high IRR (low end), the target IRR (mid) and the low IRR (high end)."""
     lo_irr, hi_irr = config.LBO_IRR_RANGE
-    return {"low": max_price(run_kwargs, values, inputs, hi_irr),
-            "mid": max_price(run_kwargs, values, inputs, inputs["target_irr"]),
-            "high": max_price(run_kwargs, values, inputs, lo_irr),
+    r = result or run_lbo(run_kwargs, values, inputs)
+    return {"low": max_price(run_kwargs, values, inputs, hi_irr, r),
+            "mid": max_price(run_kwargs, values, inputs, inputs["target_irr"], r),
+            "high": max_price(run_kwargs, values, inputs, lo_irr, r),
             "irr_range": (lo_irr, hi_irr)}
+
+
+def football_field_row(run_kwargs: dict, values: dict, inputs: dict, result: dict = None) -> dict | None:
+    """Row for summary.football_field_data: max price at 25% (low) to 15% (high) IRR."""
+    r = result or run_lbo(run_kwargs, values, inputs)
+    p = price_range(run_kwargs, values, inputs, r)
+    if any(pd.isna(p[k]) for k in ("low", "high")):
+        return None
+    lo_irr, hi_irr = p["irr_range"]
+    return {"label": f"LBO analysis ({lo_irr:.0%}-{hi_irr:.0%} IRR)", "group": "LBO",
+            "low": p["low"], "mid": p["mid"], "high": p["high"],
+            "basis": f"Maximum price a sponsor can pay for a {hi_irr:.0%} / {inputs['target_irr']:.0%} / "
+                     f"{lo_irr:.0%} IRR; {r['credit']['entry_leverage']:.1f}x debt, exit at "
+                     f"{r['exit']['multiple']:.1f}x EBITDA in Year {r['exit']['year']}"}
+
+
+# ---------------------------------------------------------------------------
+# Sensitivity tables (IRR)
+# ---------------------------------------------------------------------------
+
+EXIT_EQUALS_ENTRY = "= entry"
+
+
+def _exit_columns(values: dict) -> list:
+    now = current_multiple(values)
+    return [now - 1, now, now + 1]
+
+
+def irr_entry_exit(run_kwargs: dict, values: dict, inputs: dict, step: float = 1.0) -> pd.DataFrame:
+    """IRR for entry multiple (rows: the current entry +-2 steps) x exit multiple
+    (columns: today's multiple +-1x, and exit at the row's own entry multiple)."""
+    entry = run_lbo(run_kwargs, values, inputs)["entry"]["entry_multiple"]
+    rows = [entry + k * step for k in (-2, -1, 0, 1, 2)]
+    cols = _exit_columns(values) + [EXIT_EQUALS_ENTRY]
+    out = pd.DataFrame(index=pd.Index(rows, name="Entry EV/EBITDA"),
+                       columns=pd.Index(cols, name="Exit EV/EBITDA"), dtype=float)
+    for m_in in rows:
+        for m_out in cols:
+            exit_m = m_in if m_out == EXIT_EQUALS_ENTRY else m_out
+            inp = {**inputs, "entry_multiple": m_in, "exit_multiple": exit_m}
+            out.loc[m_in, m_out] = run_lbo(run_kwargs, values, inp)["returns"]["irr"]
+    return out
+
+
+def irr_leverage_exit(run_kwargs: dict, values: dict, inputs: dict,
+                      leverage=(4.0, 5.0, 6.0, 7.0)) -> pd.DataFrame:
+    """IRR for total debt / EBITDA (rows) x exit multiple (columns: today's
+    +-1x and the entry multiple), at the user's entry price. Leverage changes
+    through the first (prepayable) tranche; the others keep their size."""
+    entry = run_lbo(run_kwargs, values, inputs)["entry"]["entry_multiple"]
+    cols = _exit_columns(values) + [entry]
+    out = pd.DataFrame(index=pd.Index(list(leverage), name="Total debt / EBITDA"),
+                       columns=pd.Index(cols, name="Exit EV/EBITDA"), dtype=float)
+    others = sum(t["multiple"] for t in inputs["tranches"][1:])
+    for lev in leverage:
+        inp = copy.deepcopy(inputs)
+        inp["tranches"][0]["multiple"] = max(lev - others, 0.0)
+        for m_out in cols:
+            inp["exit_multiple"] = m_out
+            out.loc[lev, m_out] = run_lbo(run_kwargs, values, inp)["returns"]["irr"]
+    return out
 
 
 def with_base_rate_shift(inputs: dict, shift: float) -> dict:

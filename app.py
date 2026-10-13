@@ -21,6 +21,7 @@ import config
 import data_loader as dl
 import dcf
 import export
+import lbo
 import precedents
 import scenarios
 import summary
@@ -92,10 +93,11 @@ def load_data(tickers: tuple, refresh_token: int, refresh: bool) -> dict:
 
 @st.cache_data(show_spinner="Building the Excel file...")
 def excel_bytes(key: str, _data: dict, _choices: dict, target: str, peers: tuple, _scenarios: dict,
-                _weights: dict, _prec: pd.DataFrame, _prec_settings: dict) -> bytes:
+                _weights: dict, _prec: pd.DataFrame, _prec_settings: dict, _lbo_inputs: dict, switch: int) -> bytes:
     # The underscore arguments are not hashed; `key` identifies the data and the inputs
     return export.build_workbook(_data, _choices, target, list(peers), scenario_values=_scenarios,
-                                 weights=_weights, precedent_deals=_prec, precedent_settings=_prec_settings)
+                                 weights=_weights, precedent_deals=_prec, precedent_settings=_prec_settings,
+                                 lbo_inputs=_lbo_inputs, scenario_switch=switch)
 
 
 tickers = (TARGET, *PEERS)
@@ -166,6 +168,10 @@ INPUTS = {
 }
 
 
+def _to_pct_widget(value):
+    return None if _missing(value) else float(value) * 100
+
+
 def _to_widget(name, value):
     # Not rounded: the defaults must reproduce the model exactly (display shows 2 decimals).
     # A missing default (e.g. no risk-free rate for this currency) leaves the field empty.
@@ -180,7 +186,31 @@ def _from_widget(name, value):
     return value / 100 if INPUTS[name][1] == "pct" else float(value)
 
 
+# LBO inputs live in their tab; percent values are entered in percent
+short_rate = data.get("short_rate", {})
+LBO_DEFAULTS = {
+    "lbo_scenario": config.SCENARIO_LABELS["base"],
+    "lbo_mode": "Premium",
+    "lbo_premium": config.LBO_PREMIUM * 100,
+    "lbo_entry_multiple": lbo.entry_terms(tv, {"premium": config.LBO_PREMIUM})["entry_multiple"],
+    "lbo_exit_multiple": lbo.current_multiple(tv),
+    "lbo_exit_year": config.LBO_EXIT_YEAR,
+    "lbo_target_irr": config.LBO_TARGET_IRR * 100,
+    "lbo_floating_base": _to_pct_widget(short_rate.get("rate")),
+    "lbo_txn_fee": config.LBO_TRANSACTION_FEE_PCT * 100,
+    "lbo_fin_fee": config.LBO_FINANCING_FEE_PCT * 100,
+    "lbo_min_cash": config.LBO_MIN_CASH_PCT * 100,
+}
+
+
+def reset_lbo():
+    for k, v in LBO_DEFAULTS.items():
+        st.session_state[k] = v
+    st.session_state.pop("lbo_tranches", None)
+
+
 def reset_inputs():
+    reset_lbo()
     for name in INPUTS:
         st.session_state[f"in_{name}"] = _to_widget(name, defaults[name])
     st.session_state["in_mid_year"] = defaults["mid_year"]
@@ -195,6 +225,8 @@ def reset_inputs():
 if st.session_state.get("inputs_for") != tickers:
     reset_inputs()
     st.session_state["inputs_for"] = tickers
+for k, v in LBO_DEFAULTS.items():
+    st.session_state.setdefault(k, v)
 
 with st.sidebar:
     fetched = companies[TARGET]["meta"].get("fetched_at", "")
@@ -298,6 +330,48 @@ sc_runs = scenarios.run_scenarios(data, choices, sc_values, TARGET)
 sc_results = scenarios.results_table(sc_runs, weights)
 
 # ---------------------------------------------------------------------------
+# LBO: inputs are drawn in their tab and read here first (for the football field)
+# ---------------------------------------------------------------------------
+
+LBO_COLS = {"x EBITDA": ("multiple", 1), "Spread (%)": ("spread", 100), "Amortization (% a year)": ("amortization", 100),
+            "Maturity (years)": ("maturity", 1), "Cash sweep": ("sweep", None)}
+
+
+def lbo_tranche_table() -> pd.DataFrame:
+    df = pd.DataFrame([{col: (t[key] * f if f else t[key]) for col, (key, f) in LBO_COLS.items()}
+                       for t in config.LBO_TRANCHES], index=[t["name"] for t in config.LBO_TRANCHES])
+    for row, cols in st.session_state.get("lbo_tranches", {}).get("edited_rows", {}).items():
+        for colname, value in cols.items():
+            if colname in df.columns and value is not None:
+                df.iloc[int(row), df.columns.get_loc(colname)] = value
+    return df
+
+
+def _pct_in(key):
+    v = st.session_state.get(key)
+    return float("nan") if v is None else v / 100
+
+
+lbo_table = lbo_tranche_table()
+lbo_sc = {config.SCENARIO_LABELS[k]: k for k in config.SCENARIOS}[st.session_state["lbo_scenario"]]
+lbo_kw = sc_runs[lbo_sc]["run_kwargs"]
+lbo_inputs = lbo.default_inputs(_pct_in("lbo_floating_base"), choices["risk_free"])
+lbo_inputs.update(
+    premium=_pct_in("lbo_premium"),
+    entry_multiple=st.session_state["lbo_entry_multiple"] if st.session_state["lbo_mode"] == "Entry multiple" else None,
+    exit_multiple=st.session_state["lbo_exit_multiple"], exit_year=int(st.session_state["lbo_exit_year"]),
+    target_irr=_pct_in("lbo_target_irr"), transaction_fee_pct=_pct_in("lbo_txn_fee"),
+    financing_fee_pct=_pct_in("lbo_fin_fee"), min_cash_pct=_pct_in("lbo_min_cash"))
+for t, (_, r) in zip(lbo_inputs["tranches"], lbo_table.iterrows()):
+    for col, (key, f) in LBO_COLS.items():
+        t[key] = bool(r[col]) if f is None else float(r[col]) / f
+lbo_ready = not any(_missing(x) for x in [lbo_inputs["premium"], lbo_inputs["exit_multiple"], lbo_inputs["target_irr"],
+                                           tv.get("ebitda_ttm"), *[t["base_rate"] for t in lbo_inputs["tranches"]]]) \
+    and tv.get("ebitda_ttm", 0) > 0
+lbo_result = lbo.run_lbo(lbo_kw, tv, lbo_inputs) if lbo_ready else None
+lbo_row = lbo.football_field_row(lbo_kw, tv, lbo_inputs, lbo_result) if lbo_ready else None
+
+# ---------------------------------------------------------------------------
 # Precedent transactions: built-in file or the user's upload (this session only).
 # The settings are drawn in their tab, read here first for the football field.
 # ---------------------------------------------------------------------------
@@ -317,7 +391,7 @@ prec_applies = precedents.applicable(companies[TARGET]["meta"], TARGET, prec_dea
 prec_row = precedents.football_field_row(tv, prec_deals) if prec_applies else None
 
 ff = summary.football_field_data(companies, kw, TARGET, PEERS, scenario_runs=sc_runs if HAS_DCF else None,
-                                 precedent_row=prec_row)
+                                 precedent_row=prec_row, lbo_row=lbo_row)
 reverse = summary.reverse_dcf(kw)
 mtable, exclusions = comps.multiples_table(companies)
 pstats = comps.peer_stats(mtable, PEERS)
@@ -339,8 +413,8 @@ if stale:
     st.warning(f"Live download from Yahoo Finance failed, so saved data is shown for {', '.join(stale)} "
                f"(from {', '.join(dates)}). Try **Refresh data** later.")
 
-tab_summary, tab_dcf, tab_sc, tab_comps, tab_prec, tab_data = st.tabs(
-    ["Summary", "DCF", "Scenarios", "Comps", "Precedent Transactions", "Data & quality"])
+tab_summary, tab_dcf, tab_lbo, tab_sc, tab_comps, tab_prec, tab_data = st.tabs(
+    ["Summary", "DCF", "LBO", "Scenarios", "Comps", "Precedent Transactions", "Data & quality"])
 
 
 # ---------------------------------------------------------------------------
@@ -366,6 +440,9 @@ with tab_summary:
                f"±{config.FF_WACC_DELTA:.1%} x terminal growth ±{config.FF_GROWTH_DELTA:.1%} "
                f"(Gordon) or exit multiple ±{config.FF_MULTIPLE_DELTA:.0f}x, tick = base case. "
                + (f"Precedents = deals' EV/EBITDA, {prec_row['basis']}, tick = median (see their tab). " if prec_row else "")
+               + (f"LBO = maximum price a fund can pay for a {config.LBO_IRR_RANGE[1]:.0%} (low) to "
+                  f"{config.LBO_IRR_RANGE[0]:.0%} (high) IRR, tick = {lbo_inputs['target_irr']:.0%} (see the LBO tab). "
+                  if lbo_row else "")
                + ("P/B is shown because the target is a financial company." if summary.is_financial(data, TARGET)
                   else "P/B is left out (see the Comps tab).")
                + ("" if HAS_DCF else " DCF rows appear once a risk-free rate is entered."))
@@ -391,13 +468,14 @@ with tab_summary:
 
     excel_key = repr((tickers, companies[TARGET]["meta"].get("fetched_at"), sorted(choices.items()),
                       sorted((k, sorted(v.items())) for k, v in sc_values.items()), sorted(weights.items()),
-                      sorted(prec_settings.items()), prec_all.to_csv(index=False)))
+                      sorted(prec_settings.items()), prec_all.to_csv(index=False), repr(lbo_inputs), lbo_sc))
     st.download_button("Download Excel model", type="primary",
                        data=excel_bytes(excel_key, data, choices, TARGET, tuple(PEERS), sc_values, weights,
-                                        prec_all, prec_settings),
+                                        prec_all, prec_settings, lbo_inputs, config.SCENARIOS.index(lbo_sc) + 1),
                        file_name=f"{TARGET}_valuation.xlsx",
                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                       help="DCF and WACC sheets use live Excel formulas; the other sheets hold values.")
+                       help="DCF, WACC, Scenarios and LBO sheets use live Excel formulas; the other sheets hold values. "
+                            "The DCF sheet's scenario switch is set to the LBO tab's scenario.")
 
 
 # ---------------------------------------------------------------------------
@@ -489,6 +567,140 @@ with tab_dcf:
                                                    x_is_multiple=True, base_x=kw["exit_multiple"],
                                                    base_wacc=kw["wacc_rate"], currency=CCY),
                         width="stretch")
+
+
+# ---------------------------------------------------------------------------
+# LBO
+# ---------------------------------------------------------------------------
+
+def bn(x):
+    return "N/A" if _missing(x) else money(x)
+
+
+with tab_lbo:
+    st.markdown(
+        "**If a private equity fund bought the company with mostly borrowed money, what is the most it could "
+        "pay per share and still earn its target return?** The fund (the *sponsor*) puts in equity, borrows "
+        "the rest against the company's EBITDA, uses the cash flow to repay debt and sells after a few years. "
+        "Operations come from the DCF projection of the chosen scenario.")
+    c = st.columns(4)
+    c[0].selectbox("Operating scenario", list(config.SCENARIO_LABELS.values()), key="lbo_scenario",
+                   help="Revenue, EBITDA, D&A, capex, working capital and tax from this DCF scenario.")
+    c[1].radio("Entry price set by", ["Premium", "Entry multiple"], key="lbo_mode", horizontal=True)
+    if st.session_state["lbo_mode"] == "Premium":
+        c[2].number_input("Premium over the current price (%)", key="lbo_premium", step=1.0, format="%.1f",
+                          help="Illustrative assumption: buyers of listed companies usually pay a premium to win "
+                               "shareholders' approval.")
+    else:
+        c[2].number_input("Entry EV / EBITDA (x)", key="lbo_entry_multiple", step=0.25, format="%.2f")
+    c[3].number_input("Exit EV / EBITDA (x)", key="lbo_exit_multiple", step=0.25, format="%.2f",
+                      help=f"Default: {TARGET}'s current trading multiple ({mult(LBO_DEFAULTS['lbo_exit_multiple'])}), "
+                           "not the entry multiple, which includes the premium (see the notes below).")
+    c = st.columns(4)
+    c[0].selectbox("Exit year", list(range(1, config.PROJECTION_YEARS + 1)), key="lbo_exit_year")
+    c[1].number_input("Target IRR (%)", key="lbo_target_irr", step=1.0, format="%.1f",
+                      help="The fund's required annual return; the football field shows 15%-25%.")
+    c[2].number_input("Floating base rate (%)", key="lbo_floating_base", step=0.05, format="%.2f",
+                      help="Proxy for SOFR: the 13-week US Treasury bill yield (^IRX)"
+                           + (f", downloaded {short_rate.get('date')}." if short_rate.get("date") else ". Enter it."))
+    c[3].number_input("Minimum cash (% of revenue)", key="lbo_min_cash", step=0.5, format="%.1f",
+                      help="Illustrative assumption: cash the business keeps to operate; the rest repays debt.")
+    c = st.columns(4)
+    c[0].number_input("Transaction fees (% of entry EV)", key="lbo_txn_fee", step=0.1, format="%.2f",
+                      help="Illustrative assumption: advisory, legal and other deal costs.")
+    c[1].number_input("Financing fees (% of new debt)", key="lbo_fin_fee", step=0.1, format="%.2f",
+                      help="Illustrative assumption: arrangement fees paid to the lenders.")
+    c[3].button("Reset LBO inputs", on_click=reset_lbo)
+    st.data_editor(lbo_tranche_table(), key="lbo_tranches", width="stretch",
+                   column_config={"x EBITDA": st.column_config.NumberColumn(format="%.2f", step=0.25),
+                                  "Spread (%)": st.column_config.NumberColumn(format="%.2f", step=0.05),
+                                  "Amortization (% a year)": st.column_config.NumberColumn(format="%.2f", step=0.25),
+                                  "Maturity (years)": st.column_config.NumberColumn(format="%d", step=1)})
+    st.caption(
+        "Debt sizes, spreads, amortization, maturities and fees are **illustrative assumptions**, not market data. "
+        f"{config.LBO_TRANCHES[0]['name']}: floating, base rate {pct(lbo_inputs['tranches'][0]['base_rate'], 2)} "
+        f"(13-week T-bill, SOFR proxy) + spread, prepayable (cash sweep). {config.LBO_TRANCHES[1]['name']}: fixed, "
+        f"10-year Treasury {pct(choices['risk_free'], 2)} (sidebar risk-free rate) + spread, repaid at maturity.")
+
+    if not lbo_ready:
+        st.info("Enter the base rates (and a risk-free rate in the sidebar) to run the LBO; it needs positive EBITDA.")
+    else:
+        r = lbo_result
+        e, su, x, ret = r["entry"], r["sources_uses"], r["exit"], r["returns"]
+        rng = lbo.price_range(lbo_kw, tv, lbo_inputs, r)
+        m = st.columns(5)
+        m[0].metric("Offer price", cur(e["offer_price"]), f"{pct(e['premium'])} premium", delta_color="off")
+        m[1].metric("Entry EV / EBITDA", mult(e["entry_multiple"]))
+        m[2].metric("Sponsor IRR", pct(ret["irr"]))
+        m[3].metric("MOIC", "N/A" if _missing(ret["moic"]) else f"{ret['moic']:.2f}x")
+        m[4].metric(f"Max price for {pct(lbo_inputs['target_irr'], 0)} IRR", cur(rng["mid"]),
+                    None if _missing(rng["mid"]) else pct(rng["mid"] / price - 1) + " vs price")
+        st.caption("IRR: the yearly return on the sponsor's equity. MOIC: money out / money in. "
+                   "The maximum price keeps the exit multiple fixed.")
+        for w in r["warnings"]:
+            st.warning(w)
+
+        st.subheader(f"Sources and uses ({CCY})")
+        a, b = st.columns(2)
+        uses = pd.DataFrame({"Amount": [bn(v) for v in su["uses"].values()]}, index=list(su["uses"]))
+        uses.loc["Total uses"] = bn(su["total"])
+        a.dataframe(uses, width="stretch", column_config={"_index": st.column_config.Column(width="medium")})
+        src = pd.DataFrame({"Amount": [bn(v) for v in su["sources"].values()],
+                            "% of total": [pct(v / su["total"]) for v in su["sources"].values()],
+                            "x EBITDA": [mult(v / e["ebitda"]) for v in su["sources"].values()]},
+                           index=list(su["sources"]))
+        src.loc["Total sources"] = [bn(su["total"]), "100.0%", mult(su["total"] / e["ebitda"])]
+        b.dataframe(src, width="stretch", column_config={"_index": st.column_config.Column(width="medium")})
+        st.caption(f"Entry EV {bn(e['entry_ev'])} = offer price x shares + net debt. Existing debt is repaid; "
+                   "the sponsor's equity is the balancing item.")
+
+        st.subheader(f"Cash flow and debt schedule ({CCY})")
+        sched = r["schedule"]
+        ratio_rows = ["Total debt / EBITDA", "Net debt / EBITDA", "EBITDA / interest", "Interest / EBITDA"]
+        view = pd.DataFrame(index=sched.index, columns=sched.columns, dtype=object)
+        for row in sched.index:
+            f = pct if row == "Interest / EBITDA" else mult if row in ratio_rows else bn
+            view.loc[row] = sched.loc[row].map(f).values
+        st.dataframe(view, width="stretch", height=rows_height(view),
+                     column_config={"_index": st.column_config.Column(width="large")})
+        st.caption("Interest is charged on the debt at the start of each year (no circular reference). Interest above "
+                   f"{config.LBO_INTEREST_DEDUCTION_CAP:.0%} of EBITDA is not tax-deductible (section 163(j), "
+                   "simplified). Cash above the minimum repays the prepayable loan (cash sweep).")
+
+        st.subheader("Exit and returns")
+        a, b = st.columns(2)
+        exit_rows = [(f"EBITDA, Year {x['year']}", bn(x["ebitda"])), ("x Exit multiple", mult(x["multiple"])),
+                     ("= Exit enterprise value", bn(x["ev"])), ("- Net debt at exit", bn(x["net_debt"])),
+                     ("= Sponsor equity at exit", bn(x["equity"])), ("Sponsor equity at entry", bn(ret["equity_in"])),
+                     ("MOIC", "N/A" if _missing(ret["moic"]) else f"{ret['moic']:.2f}x"), ("IRR", pct(ret["irr"]))]
+        a.dataframe(pd.DataFrame(exit_rows, columns=["", "Value"]).set_index(""), width="stretch")
+        lo_irr, hi_irr = config.LBO_IRR_RANGE
+        prices = pd.DataFrame({"Max price per share": [cur(rng["low"]), cur(rng["mid"]), cur(rng["high"])],
+                               "vs current price": [pct(p / price - 1) if not _missing(p) else "N/A"
+                                                    for p in (rng["low"], rng["mid"], rng["high"])]},
+                              index=[f"{hi_irr:.0%} IRR", f"{lbo_inputs['target_irr']:.0%} IRR (target)",
+                                     f"{lo_irr:.0%} IRR"])
+        b.dataframe(prices, width="stretch")
+        b.caption(f"Current price {cur(price)}. These three prices are the LBO row of the football field.")
+
+        st.subheader("Sensitivity: sponsor IRR")
+        h1, h2 = st.columns(2)
+        h1.plotly_chart(charts.irr_heatmap(lbo.irr_entry_exit(lbo_kw, tv, lbo_inputs), lbo_inputs["target_irr"],
+                                           "Entry x exit multiple", (e["entry_multiple"], x["multiple"])),
+                        width="stretch")
+        h2.plotly_chart(charts.irr_heatmap(lbo.irr_leverage_exit(lbo_kw, tv, lbo_inputs), lbo_inputs["target_irr"],
+                                           "Total leverage x exit multiple",
+                                           (r["credit"]["entry_leverage"], x["multiple"])),
+                        width="stretch")
+        st.caption(f"Exit columns: {TARGET}'s current multiple ±1x and exit at the entry multiple (\"= entry\": each "
+                   "row's own entry multiple; right table: the entry multiple of your case). Leverage changes "
+                   f"through the {config.LBO_TRANCHES[0]['name']}.")
+
+        st.subheader("Is such a buyout realistic?")
+        st.info("\n\n".join(lbo.feasibility(r)).replace("$", "\\$"))     # "$" would start a formula
+        st.caption(" · ".join(f"[{d['name']}]({d['source']})" for d in config.LBO_LARGEST_DEALS))
+        with st.expander("Simplifications and why the exit is at today's multiple"):
+            st.markdown("\n".join(f"- {t}" for t in lbo.SIMPLIFICATIONS))
 
 
 # ---------------------------------------------------------------------------

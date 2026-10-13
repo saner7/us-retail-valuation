@@ -67,4 +67,6 @@ def make_data(tickers=None, currencies=None, industries=None, risk_free=0.04) ->
         rf.update(rate=float("nan"), date=None, fetched_at=None, data_source="manual")
     else:
         rf.update(rate=risk_free, date="2026-10-09", fetched_at="2026-10-12T09:00:00", data_source="live")
-    return {"companies": companies, "errors": {}, "target": tickers[0], "risk_free": rf}
+    short = {"rate": 0.03 if ccy == "USD" else float("nan"), "date": "2026-10-09",
+             "fetched_at": "2026-10-12T09:00:00", "data_source": "live" if ccy == "USD" else "manual"}
+    return {"companies": companies, "errors": {}, "target": tickers[0], "risk_free": rf, "short_rate": short}
