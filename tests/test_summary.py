@@ -63,3 +63,17 @@ def test_reverse_dcf_hits_the_price(data):
         arg = {"wacc": "wacc_rate"}.get(key, key)
         value = dcf.run_dcf(**{**kw, arg: rev[key]})[method]["value_per_share"]
         assert value == pytest.approx(kw["price"], rel=1e-6)
+
+
+def test_data_warnings_list_missing_fields_and_52_week_mismatch():
+    data = make_data()
+    assert summary.data_warnings(data, "TGT", ["WMT", "COST"]) == []
+    c = data["companies"]["WMT"]
+    c["sources"]["lease_liabilities"] = "missing"
+    c["values"]["lease_liabilities"] = float("nan")
+    t = data["companies"]["TGT"]["values"]
+    t["high_52w"] = t["price"] * 0.9
+    w = summary.data_warnings(data, "TGT", ["WMT", "COST"])
+    assert w[0]["text"].startswith("Some data could not be downloaded")
+    assert "**WMT**: lease liabilities (N/A as a result: net debt and EV: EV multiples, DCF and LBO)" in w[0]["text"]
+    assert "outside its 52-week range" in w[1]["text"] and "TGT" in w[1]["text"]

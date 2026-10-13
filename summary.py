@@ -238,6 +238,59 @@ def is_financial(data: dict, ticker: str) -> bool:
     return _is_financial_meta(data["companies"][ticker]["meta"])
 
 
+# What a missing raw field switches off (shown so the user can understand the N/A values)
+FIELD_EFFECTS = {
+    "price": ("share price", "every per-share comparison"),
+    "market_cap": ("market cap", "EV and every multiple"),
+    "shares_outstanding": ("shares outstanding", "every value per share"),
+    "total_debt": ("total debt", "net debt and EV: EV multiples, DCF and LBO"),
+    "cash": ("cash", "net debt and EV: EV multiples, DCF and LBO"),
+    "lease_liabilities": ("lease liabilities", "net debt and EV: EV multiples, DCF and LBO"),
+    "ebitda_ttm": ("TTM EBITDA", "EV/EBITDA, the DCF margin and the LBO"),
+    "revenue_ttm": ("TTM revenue", "EV/Sales and the DCF"),
+    "net_income_ttm": ("TTM net income", "P/E"),
+    "book_value_per_share": ("book value", "P/B"),
+    "low_52w": ("52-week low", "the 52-week bar"),
+    "high_52w": ("52-week high", "the 52-week bar"),
+}
+
+
+def data_warnings(data: dict, target: str, peers: list) -> list:
+    """Problems with the downloaded data itself, for the top of the app:
+    fields Yahoo did not deliver (and what shows N/A because of them), and a
+    price outside the 52-week range (one of the two is likely stale)."""
+    out, missing = [], []
+    for t in [target] + [p for p in peers if p in data["companies"]]:
+        c = data["companies"].get(t)
+        if c is None:
+            continue
+        gone = [f for f in FIELD_EFFECTS if c["sources"].get(f) == "missing"]
+        if gone:
+            effects = sorted({FIELD_EFFECTS[f][1] for f in gone})
+            missing.append(f"**{t}**: {', '.join(FIELD_EFFECTS[f][0] for f in gone)} "
+                           f"(N/A as a result: {'; '.join(effects)})")
+        if t == target:
+            items = [col for col in c["history"].columns if c["history"][col].isna().all()] \
+                if not c["history"].empty else ["all annual statements"]
+            if items:
+                missing.append(f"**{t}** annual history: {', '.join(items)} (DCF defaults may be N/A)")
+        v = c["values"]
+        if not any(pd.isna(v.get(k)) for k in ("price", "low_52w", "high_52w")) and \
+                not v["low_52w"] <= v["price"] <= v["high_52w"]:
+            sym = config.currency_symbol(c["meta"].get("currency"))
+            out.append({"level": "warning", "text":
+                        f"Data quality: {t}'s price {sym}{v['price']:,.2f} is outside its 52-week range "
+                        f"({sym}{v['low_52w']:,.2f}-{sym}{v['high_52w']:,.2f}) as reported by Yahoo Finance. One "
+                        "of them is probably stale; check the price and the range before relying on the "
+                        "52-week bar. Try **Refresh data** later."})
+    if missing:
+        out.insert(0, {"level": "warning", "text":
+                       "Some data could not be downloaded from Yahoo Finance (often a temporary block on shared "
+                       "cloud servers). Missing fields:\n\n" + "\n\n".join(f"- {m}" for m in missing)
+                       + "\n\nTry **Refresh data** later, or add the values to data/manual_overrides.csv."})
+    return out
+
+
 def analysis_warnings(data: dict, target: str, peers: list) -> list:
     """Everything the user should know about the chosen group, as
     [{"level": "warning" | "info", "text": ...}], most important first.

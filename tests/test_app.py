@@ -4,6 +4,7 @@ import math
 
 import pandas as pd
 import pytest
+import streamlit as st
 from streamlit.testing.v1 import AppTest
 
 import data_loader as dl
@@ -161,3 +162,20 @@ def test_lbo_needs_base_rate_for_euro_company(app):
     at = choose(app, "RACE.MI", "MC.PA, RMS.PA")
     assert not at.exception
     assert any("Enter the base rates" in i.value for i in at.info)
+
+
+def test_partial_download_is_explained_at_the_top(monkeypatch):
+    def partial(tickers=None, refresh=False):
+        data = fake_load_all(tickers, refresh)
+        c = data["companies"][list(tickers)[0]]
+        c["sources"]["ebitda_ttm"] = "missing"
+        c["values"]["high_52w"] = c["values"]["price"] * 0.9
+        return data
+    monkeypatch.setattr(dl, "load_all", partial)
+    st.cache_data.clear()                     # other tests cached the complete data set
+    monkeypatch.setattr(dl, "load_overrides", lambda path=None: pd.DataFrame(columns=dl.OVERRIDE_COLUMNS))
+    at = AppTest.from_file("../app.py", default_timeout=60)
+    at.run()
+    texts = [w.value for w in at.warning]
+    assert any("Some data could not be downloaded" in t and "TTM EBITDA" in t for t in texts)
+    assert any("outside its 52-week range" in t for t in texts)

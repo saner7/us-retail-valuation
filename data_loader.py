@@ -350,17 +350,32 @@ def replace_ttm(snapshot: dict, quarterly: pd.DataFrame):
     return snapshot, notes
 
 
+# Yahoo's debt lines with and without leases; if each pair is equal, total debt holds no leases
+DEBT_WITH_AND_WITHOUT_LEASES = [("Long Term Debt And Capital Lease Obligation", "Long Term Debt"),
+                                ("Current Debt And Capital Lease Obligation", "Current Debt")]
+
+
 def lease_liabilities(balance_q: pd.DataFrame):
     """Lease liabilities from the most recent quarterly balance sheet.
-    Returns (value, date) or (NaN, None) if Yahoo has no such row."""
+    Returns (value, date, note). Without a lease row the value is NaN, unless
+    Yahoo's debt lines show that its total debt contains no leases (e.g. Apple):
+    then 0 is subtracted, with a note saying why."""
     row = "Capital Lease Obligations"   # Yahoo's name; in practice mostly operating leases
-    if balance_q.empty or row not in balance_q.index:
-        return np.nan, None
-    series = balance_q.loc[row].dropna()
-    if series.empty:
-        return np.nan, None
-    latest = max(series.index)
-    return float(series[latest]), latest
+    if balance_q.empty:
+        return np.nan, None, None
+    if row in balance_q.index:
+        series = balance_q.loc[row].dropna()
+        if not series.empty:
+            latest = max(series.index)
+            return float(series[latest]), latest, None
+    pairs = [(a, b) for a, b in DEBT_WITH_AND_WITHOUT_LEASES if a in balance_q.index and b in balance_q.index]
+    if len(pairs) == len(DEBT_WITH_AND_WITHOUT_LEASES):
+        latest = max(balance_q.columns)
+        values = [(balance_q.at[a, latest], balance_q.at[b, latest]) for a, b in pairs]
+        if all(not is_missing(x) and not is_missing(y) and abs(x - y) < 1 for x, y in values):
+            return 0.0, latest, ("No lease line in Yahoo's balance sheet, and its debt lines with and without "
+                                 "leases are equal: total debt holds no leases, so nothing is subtracted")
+    return np.nan, None, None
 
 
 # ---------------------------------------------------------------------------
@@ -640,7 +655,9 @@ def convert_to_trading_currency(snapshot: dict, history: pd.DataFrame, statement
 def load_company(ticker: str, overrides: pd.DataFrame, refresh: bool = False) -> dict:
     raw = get_company_raw(ticker, refresh)
     snapshot, ttm_notes = replace_ttm(raw["snapshot"], raw["statements"]["income_q"])
-    snapshot["lease_liabilities"], lease_date = lease_liabilities(raw["statements"]["balance_q"])
+    snapshot["lease_liabilities"], lease_date, lease_note = lease_liabilities(raw["statements"]["balance_q"])
+    if lease_note:
+        ttm_notes["lease_liabilities"] = lease_note
     raw["meta"]["lease_date"] = lease_date.strftime("%Y-%m-%d") if lease_date is not None else None
     history = annual_history(raw["statements"])
     trade_ccy, fin_ccy = raw["meta"].get("currency"), raw["meta"].get("financial_currency")
