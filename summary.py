@@ -102,6 +102,19 @@ def football_field_data(companies: dict, run_kwargs: dict, target: str = None,
     return out
 
 
+def wacc_warning(model: dict) -> str | None:
+    """A WACC less than WACC_MIN_SPREAD above the risk-free rate is usually a low beta
+    (e.g. ExxonMobil: 6.2% vs 5.24%), and the DCF is very sensitive to it."""
+    wi, w = model["wacc_inputs"], model["wacc"]["wacc"]
+    rf = wi["risk_free"]
+    if pd.isna(w) or pd.isna(rf) or w - rf >= config.WACC_MIN_SPREAD:
+        return None
+    beta = "N/A" if pd.isna(wi["beta"]) else f"{wi['beta']:.2f}"
+    return (f"Low WACC ({w:.1%}, only {w - rf:.1%} above the {rf:.2%} risk-free rate), mainly driven by a low "
+            f"beta ({beta}). DCF values are very sensitive to this; consider reviewing beta and the equity risk "
+            "premium.")
+
+
 def reverse_dcf(run_kwargs: dict) -> dict:
     """What today's share price implies, one input at a time (all else unchanged):
     the WACC and terminal growth for the Gordon method, the exit multiple for the

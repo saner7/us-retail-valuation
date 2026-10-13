@@ -87,6 +87,7 @@ EXCLUDE_LEASES_FROM_DEBT = True
 # --- DCF (Stage 3) - all of these are editable in the app ------------------
 PROJECTION_YEARS = 5
 EQUITY_RISK_PREMIUM = 0.050       # assumption: extra return investors demand for stocks over bonds
+WACC_MIN_SPREAD = 0.02           # WACC less than this above the risk-free rate: warning
 CREDIT_SPREAD = 0.0125            # assumption: pre-tax cost of debt = risk-free rate + this spread
 TERMINAL_GROWTH = 0.025           # assumption: long-run growth, roughly long-term US inflation/GDP
 MID_YEAR_CONVENTION = True

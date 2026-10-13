@@ -554,7 +554,7 @@ with tab_summary:
         r3.metric("Exit EV/EBITDA", mult(reverse["exit_multiple"]),
                   f"model {mult(kw['exit_multiple'])}", delta_color="off", delta_arrow="off")
 
-    for w in result["warnings"]:
+    for w in result["warnings"] + ([lw] if (lw := summary.wacc_warning(model)) else []):
         st.warning(w)
 
     with st.expander("Football field data"):
