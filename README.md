@@ -1,23 +1,23 @@
-# US Retail Valuation: Comps, Precedent Transactions + DCF
+# US Retail Valuation: Comps, Precedent Transactions, LBO + DCF
 
 **Live app:** [tgt-valuation.streamlit.app](https://tgt-valuation.streamlit.app/)
 
-_Interactive valuation of Target (NYSE: TGT) using comparable companies, precedent transactions and a DCF with Bear / Base / Bull scenarios, with a football field summary and a linked Excel model. Built as a learning project by an IB Diploma student interested in investment banking._
+_Interactive valuation of Target (NYSE: TGT) using comparable companies, precedent transactions, an LBO analysis and a DCF with Bear / Base / Bull scenarios, with a football field summary and a linked Excel model. Built as a learning project by an IB Diploma student interested in investment banking._
 
 ---
 
 A valuation tool for **Target (TGT)**, benchmarked against **Walmart (WMT), Costco (COST),
 Kroger (KR), Dollar General (DG) and BJ's Wholesale Club (BJ)**.
 It combines a trading-comparables analysis, precedent transactions (what acquirers paid for
-similar US retailers) and a discounted cash flow (DCF) model with Bear / Base / Bull scenarios,
-and summarises them in a "football field" chart, the way an investment banking pitch book would.
+similar US retailers), a leveraged buyout (LBO) analysis (what a private equity fund could pay)
+and a discounted cash flow (DCF) model with Bear / Base / Bull scenarios, and summarises them in a "football field" chart, the way an investment banking pitch book would.
 Any other listed company can be analysed by typing its ticker and peers in the app.
 
 > Built as a learning project by an IB Diploma student interested in economics, finance and
 > investment banking.
 
 ![App screenshot](docs/screenshot.png)
-*Summary tab: football field with comps, precedent transactions and DCF (Bear / Bull markers), DCF results and the reverse DCF box (data downloaded 12 October 2026; share prices are the 9 October close).*
+*Summary tab: football field with comps, precedent transactions, LBO and DCF (Bear / Bull markers), DCF results and the reverse DCF box (data downloaded 12 October 2026; share prices are the 9 October close).*
 
 ## Status
 
@@ -30,6 +30,7 @@ Any other listed company can be analysed by typing its ticker and peers in the a
 | A | Any company: ticker and peer selection, currencies, financial companies | Done |
 | B | Bear / Base / Bull scenarios and a probability-weighted value | Done |
 | C | Precedent transactions (EV/EBITDA) with SEC sources | Done |
+| L | LBO analysis: sources & uses, debt schedule, IRR / MOIC, maximum price, Excel sheet | Done |
 
 ## Methodology
 
@@ -46,7 +47,12 @@ Any other listed company can be analysed by typing its ticker and peers in the a
   counting lease liabilities as debt as well would count rent twice. Yahoo does not separate
   finance from operating leases, so small finance leases are excluded too.
 - **Risk-free rate**: the 10-year US Treasury yield (`^TNX`), downloaded live for USD; for other
-  currencies it is entered by hand. The country risk premium defaults to 0 for the US.
+  currencies it is entered by hand. The country risk premium defaults to 0 for the US. The LBO
+  also uses the 13-week Treasury bill yield (`^IRX`) as a proxy for SOFR.
+- **Leases missing from Yahoo**: some balance sheets (e.g. Apple's) have no lease line. If
+  Yahoo's debt lines with and without leases are equal, its total debt holds no leases and 0 is
+  subtracted (with a note); otherwise the value stays N/A. Fields Yahoo does not deliver are
+  listed in a warning at the top of the app, with what shows N/A because of them.
 - **Manual overrides**: any value can be replaced in `data/manual_overrides.csv`
   (with a source note). Every value is tagged as `auto`, `manual`, `derived` or `missing`.
   TTM values adjusted for a one-off record the quarter that contains the one-off and the
@@ -104,21 +110,21 @@ Any other listed company can be analysed by typing its ticker and peers in the a
 - A warning is shown when the terminal value is more than 75% of enterprise value.
 
 ### App, football field and Excel export (Stage 4)
-- **Streamlit app** (`app.py`) with six tabs: Summary, DCF, Scenarios, Comps, Precedent
+- **Streamlit app** (`app.py`) with seven tabs: Summary, DCF, LBO, Scenarios, Comps, Precedent
   Transactions, Data & quality. Every DCF and
   WACC assumption is in the sidebar, with its default and the history it comes from in the help
   text. Revenue growth and the EBITDA margin are set by a start (Year 1) and an end (Year 5)
   value; an optional year-by-year table overrides individual years.
 - **Football field**, top to bottom: 52-week trading range, comps EV/EBITDA, P/E and EV/Sales
   (peer 25th-75th percentile, tick at the median), precedent transactions EV/EBITDA (when they
-  apply, see Stage C), DCF exit multiple and DCF Gordon growth (WACC ±0.5% x exit multiple ±1x or
+  apply, see Stage C), LBO (maximum price for a 25% to 15% IRR, tick at 20%), DCF exit multiple and DCF Gordon growth (WACC ±0.5% x exit multiple ±1x or
   terminal growth ±0.5%, tick at the base case, triangles at the Bear and Bull values), with the
-  current price as a dashed vertical line. **P/B is left out** of the chart (it stays in the
+  current price as a dashed vertical line (the axis always includes the price). **P/B is left out** of the chart (it stays in the
   comps tables with a note): a retailer's value comes from its cash flows, not from the
   assets on its balance sheet, and share buybacks shrink book equity and inflate P/B.
 - **Reverse DCF box**: the WACC, terminal growth and exit multiple implied by today's price.
-- **Excel export** (`export.py`, also the download button in the app). The **DCF and WACC
-  and Scenarios sheets are live formulas**: inputs are blue on yellow, and changing one updates
+- **Excel export** (`export.py`, also the download button in the app). The **DCF, WACC,
+  Scenarios and LBO sheets are live formulas**: inputs are blue on yellow, and changing one updates
   the value per share. The other sheets (Summary, Sensitivity, Comps, Bridge, Precedents, Market
   data, Data quality, History) hold values from the moment of export. A test recalculates the workbook with
   LibreOffice and checks that Excel and Python agree to 9 significant digits.
@@ -187,6 +193,71 @@ it was not found in a primary source.
   matches the deals in the calculation, or for Target, for whom the list was selected. Other
   companies can upload their own CSV in the app (template provided; used for that session only).
 
+### LBO analysis (Stage L)
+**Question:** if a private equity fund (the *sponsor*) bought Target with mostly borrowed money,
+what is the most it could pay per share and still earn its target return? The fund puts in
+equity, borrows the rest against EBITDA, uses the cash flow to repay debt and sells after five
+years. Code: `lbo.py`; app: LBO tab; Excel: LBO sheet (live formulas, IRR via Excel's `IRR()`).
+
+- **Operations** come from the DCF projection of the chosen scenario (default Base): no second
+  set of operating assumptions. Taxes are recalculated after interest.
+- **Entry**: current price + 25% premium (or an entry EV/EBITDA multiple). Entry EV = offer price
+  x shares + net debt. For Target: $192.05 per share, EV $97.7bn = 11.8x TTM EBITDA ($8.27bn).
+- **Sources and uses** (Target, $bn): uses = purchase of equity 87.25, repay existing debt 15.86,
+  transaction fees 1.47, financing fees 0.83 (total 105.40); sources = Term Loan B 24.80,
+  Senior Notes 16.53, existing cash above the minimum 3.26, sponsor equity 60.81 (58%).
+- **Debt** (all terms are *illustrative assumptions*, editable; no market source is claimed):
+
+  | Tranche | Size | Rate | Repayment | Maturity |
+  |---|---|---|---|---|
+  | Term Loan B | 3.0x EBITDA | floating: `^IRX` 4.05% (SOFR proxy) + 3.25% | 1% a year + cash sweep | 7 years |
+  | Senior Notes | 2.0x EBITDA | fixed: 10-year Treasury 5.24% + 3.50% | at maturity | 8 years |
+
+  Fees: 1.5% of entry EV (transaction), 2% of new debt (financing). Minimum cash: 2% of revenue.
+- **Cash flow**: free cash flow after interest and tax pays the required repayments; cash above
+  the minimum repays the Term Loan B early (*cash sweep*). Interest is charged on the debt at the
+  start of each year, so there is no circular reference in Excel.
+- **Interest deduction (US section 163(j))**, simplified: deductible interest is capped at 30% of
+  EBITDA and the excess is ignored (in reality it carries forward).
+- **Exit**: Year 5 at Target's **current trading EV/EBITDA (9.7x)**, not the entry multiple. The
+  entry multiple includes the 25% premium, so exiting there assumes the fund sells above today's
+  market value; sponsors usually underwrite more cautiously. Exit at the entry multiple is shown
+  in the sensitivity table.
+- **Returns**: MOIC = equity out / equity in; IRR = the yearly return that turns one into the other.
+- **Maximum price**: with the exit multiple fixed, nothing after closing depends on the price (the
+  debt is sized on EBITDA), so the price only changes the sponsor's cheque and can be solved
+  directly: equity needed = exit equity / (1 + IRR)^5. The exit multiple stays fixed here on
+  purpose: tying it to the entry price would let a higher price raise its own sale price.
+- **Credit checks**: a warning when EBITDA / interest falls below 2x or total debt is above 6x
+  EBITDA (the level the US bank regulators' *Interagency Guidance on Leveraged Lending*, 2013,
+  says raises concerns for most industries), and when interest exceeds the 163(j) cap.
+- **Feasibility**: compared with the largest sponsor buyouts on record: Electronic Arts (2025,
+  EV ~$55bn, equity ~$36bn, $20bn debt; [EA 8-K Ex.99.1](https://www.sec.gov/Archives/edgar/data/712515/000114036125036415/ef20056167_ex99-1.htm))
+  and TXU (2007, $45bn; [TXU 8-K Ex.99.1](https://www.sec.gov/Archives/edgar/data/1023291/000095013407004081/d44014exv99w1.htm)).
+- **Simplifications**: no revolving credit facility and no interest on cash; taxes never negative
+  and no loss carryforward; fees not amortised; no management options, dividends or dividend
+  recaps; the sponsor owns 100%; no tax or fees at exit; base rates flat for five years.
+
+**Target results.** At a 25% premium the fund would earn an IRR of **0.5%** (MOIC 1.02x): the
+debt falls only from $41.3bn to $35.8bn in five years, because capex (~$4bn a year) and interest
+(~$3bn) absorb most of the cash flow, and the exit at 9.7x is below the 11.8x paid. The most a
+fund could pay is **$104 / $114 / $127 per share for a 25% / 20% / 15% IRR**, all below today's
+$153.64. Interest is 30-38% of EBITDA, so the 163(j) cap applies every year. The deal would be
+1.8x the largest sponsor buyout on record: read the result as a valuation yardstick (what a
+financial buyer could justify), not as a realistic deal.
+
+*Interest rates.* Two points lower base rates raise the 20% IRR price only from $114 to $118:
+debt is sized as a multiple of EBITDA, so cheaper debt saves interest (~$0.65bn a year after
+tax) but does not change how much is borrowed. The larger effect works through *debt capacity*:
+lenders size debt by interest coverage. At today's rates 6x debt leaves coverage of 2.2x, close
+to the 2x floor; with rates two points lower the same 6x leaves 3.0x. More cheap debt in place
+of 20%-return equity is what lifts the price ($122 at 6x today, $126 at 6x with lower rates).
+
+*Leverage cuts both ways.* At the 25% premium, more debt *lowers* the IRR (4x: 1.3%, 7x: -2.4% at
+a 9.7x exit): leverage only helps when the business returns more than the debt costs, and buying
+at 11.8x and selling at 9.7x does not. At the lower maximum price it does, which is why 6x
+debt raises that price.
+
 ### Data quality checks
 Missing fields, zero or negative EBITDA, losses (P/E excluded), negative equity, price outside
 the 52-week range, price × shares vs market cap, our EV vs Yahoo's EV, reporting currency,
@@ -194,7 +265,7 @@ and stale annual statements.
 
 ## Valuation commentary
 *Figures from the data downloaded on 12 October 2026 (price $153.64 at the 9 October close, 10-year
-Treasury 5.24%); they move with the data.*
+Treasury 5.24%, 13-week T-bill 4.05%); they move with the data.*
 
 ### One-off items (manual overrides)
 Two one-offs distort the trailing twelve months, and neither is removed by Yahoo's
@@ -259,6 +330,22 @@ sensitivity tables show how the value moves with WACC. The honest reading is tha
 today's interest rates, the market price needs either a lower required return or more
 growth/margin recovery than Target's recent history shows.
 
+### Four methods side by side
+| Method | Value per share | Based on |
+|---|---|---|
+| DCF, Gordon growth | ~$101 | Target's own cash flows at our WACC |
+| Precedent transactions (median) | ~$101 | what acquirers paid for comparable retailers |
+| LBO (20% IRR) | ~$114 | what a financial buyer could pay with today's financing costs |
+| DCF, exit multiple | ~$167 | today's peer multiples, applied in five years |
+| Comps EV/EBITDA (median) | ~$182 | today's peer multiples |
+
+The three methods that rest on Target's own cash flow or on what buyers actually paid meet in a
+cautious zone around $100-$115, about a quarter or more below the $153.64 price. The two that rest
+on today's peer multiples sit above the price, because Walmart and Costco pull the peer median up.
+So the market price only makes sense if Target is valued more like its premium peers than its own
+cash flows justify at today's interest rates, or if margins and growth recover beyond its recent
+history.
+
 ### Why leases are excluded from enterprise value (ASC 842)
 Under US GAAP (ASC 842) operating lease costs (store rent) stay in operating expenses, so
 EBITDA is already *after* rent. Lease liabilities are on the balance sheet and Yahoo includes
@@ -300,6 +387,9 @@ EBITDAR, i.e. before rent) is also consistent, but Yahoo does not report rent fo
   tables, some on an adjusted basis, and advisors do not always agree (Staples: 5.0x at Morgan
   Stanley, 6.0x at Goldman Sachs). Whether the deals apply is
   decided from Yahoo's industry label, which is coarse (Target is "Discount Stores").
+- **LBO**: the debt terms, fees and minimum cash are illustrative assumptions, not market quotes;
+  `^IRX` is only a proxy for SOFR, and rates are held flat. See the simplifications in the LBO
+  section.
 
 ## Project structure
 ```
@@ -311,7 +401,8 @@ summary.py             football field data, reverse DCF, app inputs -> model
 charts.py              Plotly charts (football field, sensitivity heatmap, scenarios)
 scenarios.py           Bear / Base / Bull scenarios and the probability-weighted value
 precedents.py          precedent transactions: loading, filters, EV/EBITDA range
-export.py              Excel export (DCF, WACC and Scenarios as live formulas)
+lbo.py                 LBO: sources & uses, debt schedule, IRR / MOIC, maximum price
+export.py              Excel export (DCF, WACC, Scenarios and LBO as live formulas)
 app.py                 Streamlit app
 data/manual_overrides.csv
 data/precedents.csv    precedent transactions with SEC sources

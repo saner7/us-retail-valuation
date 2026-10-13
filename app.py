@@ -398,7 +398,7 @@ pstats = comps.peer_stats(mtable, PEERS)
 price = tv["price"]
 
 st.title(f"{NAME} ({TARGET}) valuation")
-st.caption(f"Trading comparables, precedent transactions and DCF with scenarios. Amounts in {CCY}. For educational purposes only, not investment advice.")
+st.caption(f"Trading comparables, precedent transactions, LBO and DCF with scenarios. Amounts in {CCY}. For educational purposes only, not investment advice.")
 
 for note in selection_notes:
     st.info(note)
