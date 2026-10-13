@@ -160,10 +160,13 @@ def football_field(rows, current_price: float, title: str, currency: str = "USD"
                        font={"size": 12, "color": INK})
 
     plot_height = 40 + 52 * len(rows)
-    extra = [rows[c] for c in ("bear", "bull") if c in rows]
-    lo = min([rows["low"].min()] + [x.min() for x in extra if x.notna().any()])
-    hi = max([rows["high"].max()] + [x.max() for x in extra if x.notna().any()])
-    pad = (hi - lo) * 0.12
+    # The axis must show every bar, marker and end label, and the current price line
+    points = [rows["low"], rows["high"], rows["mid"]] + [rows[c] for c in ("bear", "bull") if c in rows]
+    values = [float(x) for s in points for x in s.dropna()]
+    if current_price is not None and current_price == current_price:
+        values.append(float(current_price))
+    lo, hi = min(values), max(values)
+    pad = max((hi - lo) * 0.12, abs(hi) * 0.05)   # room for the "$123" labels outside the bar ends
     fig.update_layout(
         title={"text": title, "x": 0},
         barmode="overlay", bargap=0.35,
