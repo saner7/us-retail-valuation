@@ -265,3 +265,23 @@ def test_saved_data_banner_and_snapshot_date(monkeypatch):
     assert any(w.value.startswith("Live data unavailable; showing saved data as of 2026-10-12 for TGT")
                for w in at.warning)
     assert any("Saved fallback data for TGT:" in c.value for c in at.sidebar.caption)
+
+
+def test_blocked_yahoo_opens_any_sp500_company_from_saved_data(monkeypatch, tmp_path):
+    """Like the live app when Yahoo blocks it: every download is empty, the committed snapshot is used."""
+    import config
+
+    def blocked(ticker):
+        raise dl.YahooEmpty(f"Yahoo Finance did not return data for {ticker}.")
+    monkeypatch.setattr(config, "CACHE_DIR", tmp_path)
+    monkeypatch.setattr(dl, "fetch_from_yahoo", blocked)
+    monkeypatch.setattr(dl, "_cached_series", lambda name, fetch, refresh=False: dl.json.load(
+        open(config.SNAPSHOT_DIR / name)) | {"data_source": "snapshot"})
+    st.cache_data.clear()
+    at = AppTest.from_file("../app.py", default_timeout=120)
+    at.run()
+    for target, peers in (("TSLA", "GM, F"), ("ABBV", "LLY, MRK")):
+        at = choose(at, target, peers)
+        assert not at.exception and not at.error, target
+        assert f"({target})" in at.title[0].value
+        assert any(w.value.startswith("Live data unavailable; showing saved data as of") for w in at.warning)

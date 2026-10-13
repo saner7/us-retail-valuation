@@ -286,7 +286,8 @@ def get_company_raw(ticker: str, refresh: bool = False) -> dict:
         saved = snapshot_tickers()
         raise DataUnavailable(
             f"{ticker}: the download from Yahoo Finance failed ({str(e)[:120]}) and there is no saved copy "
-            f"of its data. Saved fallback data exists only for {', '.join(saved) or 'no company'}. "
+            f"of its data. Saved fallback data exists for {len(saved)} companies (the S&P 500 and the default "
+            f"set, e.g. {', '.join(saved[:3]) or 'none'}). "
             f"Yahoo often blocks shared cloud servers for a while: try again later.") from e
 
 
