@@ -41,7 +41,7 @@ def metric(at, label):
 def choose(at, target, peers):
     at.text_input(key="form_target").set_value(target)
     at.text_input(key="form_peers").set_value(peers)
-    at.button[0].click().run()          # the form's "Analyze" button is the first button
+    next(b for b in at.button if b.label == "Analyze").click().run()     # the form's submit button
     return at
 
 
@@ -52,7 +52,7 @@ def test_app_runs_and_shows_the_model_result(app):
     r = dcf.run_dcf(**summary.build_model(data, summary.default_choices(data))["run_kwargs"])
     assert metric(at, "DCF: Gordon growth").value == f"${r['gordon']['value_per_share']:,.2f}"
     assert metric(at, "WACC (Gordon)").value.endswith("%")          # reverse DCF box is there
-    assert [t.label for t in at.tabs] == ["Summary", "DCF", "Scenarios", "Comps", "Precedent Transactions",
+    assert [t.label for t in at.tabs] == ["Summary", "DCF", "LBO", "Scenarios", "Comps", "Precedent Transactions",
                                          "Data & quality"]
 
 
@@ -121,6 +121,47 @@ def test_precedent_row_hidden_for_other_sub_sector(app):
     at = choose(app, "HD", "LOW, TJX")
     assert not at.exception
     assert any("from other sub-sectors" in i.value for i in at.info)
+
+
+def lbo_case(data, **changes):
+    import lbo
+    choices = summary.default_choices(data)
+    kw = summary.build_model(data, choices)["run_kwargs"]
+    tv = data["companies"]["TGT"]["values"]
+    inputs = lbo.default_inputs(data["short_rate"]["rate"], choices["risk_free"])
+    inputs.update(exit_multiple=lbo.current_multiple(tv), **changes)
+    return lbo, kw, tv, inputs
+
+
+def test_lbo_tab_matches_the_engine_and_feeds_the_football_field(app):
+    at = app
+    lbo, kw, tv, inputs = lbo_case(make_data())
+    r = lbo.run_lbo(kw, tv, inputs)
+    assert metric(at, "Sponsor IRR").value == f"{r['returns']['irr']:.1%}"
+    assert metric(at, "Max price for 20% IRR").value == f"${lbo.max_price(kw, tv, inputs):,.2f}"
+    captions = " ".join(c.value for c in at.caption)
+    assert "LBO = maximum price a fund can pay for a 25% (low) to 15% (high) IRR" in captions
+    assert "illustrative assumptions" in captions and "SOFR proxy" in captions
+    at.number_input(key="lbo_premium").set_value(40.0).run()
+    assert not at.exception
+    r40 = lbo.run_lbo(kw, tv, {**inputs, "premium": 0.40})
+    assert metric(at, "Sponsor IRR").value == f"{r40['returns']['irr']:.1%}"
+    # the maximum price does not depend on the premium paid (exit multiple fixed)
+    assert metric(at, "Max price for 20% IRR").value == f"${lbo.max_price(kw, tv, inputs):,.2f}"
+
+
+def test_lbo_tranche_edit_and_warnings(app):
+    at = app
+    at.session_state["lbo_tranches"] = {"edited_rows": {0: {"x EBITDA": 6.0}}, "added_rows": [], "deleted_rows": []}
+    at.run()
+    assert not at.exception
+    assert any("8.0x EBITDA at entry" in w.value for w in at.warning)
+
+
+def test_lbo_needs_base_rate_for_euro_company(app):
+    at = choose(app, "RACE.MI", "MC.PA, RMS.PA")
+    assert not at.exception
+    assert any("Enter the base rates" in i.value for i in at.info)
 
 
 def test_partial_download_is_explained_at_the_top(monkeypatch):

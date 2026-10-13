@@ -3,6 +3,7 @@ the same figures."""
 
 from __future__ import annotations
 
+import pandas as pd
 import plotly.graph_objects as go
 
 import config
@@ -20,11 +21,12 @@ SURFACE = "#fcfcfb"
 # Football field: one categorical hue per group, in the palette's fixed order
 # (palette slots; dict order = legend order, same as the rows top-down)
 # Neighbouring rows must stay distinguishable: in row order Market, Comps,
-# Precedents, DCF this assignment passes the palette validator (CVD and normal
-# vision); yellow next to orange did not. Every bar carries direct value labels
-# because yellow and aqua are below 3:1 contrast on the surface.
+# Precedents, LBO, DCF this assignment passes the palette validator (CVD and
+# normal vision); yellow next to orange did not, nor magenta next to orange.
+# Every bar carries direct value labels because yellow and aqua are below 3:1
+# contrast on the surface.
 GROUP_COLORS = {"Market": "#eda100", "Trading comps": "#2a78d6", "Precedent transactions": "#1baf7a",
-                "DCF": "#eb6834"}
+                "LBO": "#6250d6", "DCF": "#eb6834"}
 FONT = {"family": "Inter, Helvetica, Arial, sans-serif", "color": INK}
 
 
@@ -70,6 +72,38 @@ def sensitivity_heatmap(table, current_price: float, title: str, x_is_multiple: 
         plot_bgcolor=SURFACE, paper_bgcolor=SURFACE,
         font={"family": "Inter, Helvetica, Arial, sans-serif", "color": INK},
         margin={"l": 70, "r": 20, "t": 80, "b": 60}, height=480,
+    )
+    return fig
+
+
+def irr_heatmap(table: pd.DataFrame, target_irr: float, title: str, highlight=None) -> go.Figure:
+    """Sponsor IRR for two LBO inputs. Diverging around the TARGET IRR: red =
+    below the fund's required return, blue = above, gray = about the same.
+    `highlight` = (row, column) of the user's case, outlined."""
+    def label(x):
+        return x if isinstance(x, str) else f"{x:.1f}x"
+    x_labels = [label(c) for c in table.columns]
+    y_labels = [label(r) for r in table.index]
+    fig = go.Figure(go.Heatmap(
+        z=table.values.astype(float), x=x_labels, y=y_labels,
+        colorscale=[[0, BELOW], [0.5, NEUTRAL], [1, ABOVE]], zmid=target_irr,
+        texttemplate="%{z:.1%}", textfont={"color": INK, "size": 12}, xgap=2, ygap=2,
+        colorbar={"title": {"text": "IRR", "side": "right"}, "tickformat": ".0%"},
+        hovertemplate=(f"{table.index.name} %{{y}}<br>{table.columns.name} %{{x}}"
+                       "<br>IRR %{z:.1%}<extra></extra>"),
+    ))
+    if highlight is not None:
+        i = min(range(len(table.columns)), key=lambda k: abs(table.columns[k] - highlight[1])
+                if not isinstance(table.columns[k], str) else 1e9)
+        j = min(range(len(table.index)), key=lambda k: abs(table.index[k] - highlight[0]))
+        fig.add_shape(type="rect", x0=i - 0.5, x1=i + 0.5, y0=j - 0.5, y1=j + 0.5,
+                      line={"color": INK, "width": 2})
+    fig.update_layout(
+        title={"text": f"{title}<br><sup>Target IRR {target_irr:.0%} (gray). Your case outlined.</sup>", "x": 0},
+        xaxis={"title": table.columns.name, "tickfont": {"color": MUTED}, "type": "category"},
+        yaxis={"title": table.index.name, "autorange": "reversed", "tickfont": {"color": MUTED}, "type": "category"},
+        plot_bgcolor=SURFACE, paper_bgcolor=SURFACE, font=FONT,
+        margin={"l": 70, "r": 20, "t": 80, "b": 60}, height=420,
     )
     return fig
 

@@ -7,13 +7,18 @@ import subprocess
 
 import pytest
 from openpyxl import load_workbook
+from openpyxl.utils import get_column_letter
+
+import copy
 
 import dcf
 import export
+import lbo
+import scenarios
 import summary
 from fake_data import make_data
 
-SHEETS = ["Summary", "DCF", "Scenarios", "WACC", "Sensitivity", "Comps", "Bridge", "Precedents", "Market data",
+SHEETS = ["Summary", "DCF", "LBO", "Scenarios", "WACC", "Sensitivity", "Comps", "Bridge", "Precedents", "Market data",
           "Data quality", "History"]
 
 
@@ -33,7 +38,7 @@ def test_sheets_and_which_ones_have_formulas(data):
     assert wb.sheetnames == SHEETS
     for ws in wb.worksheets:
         formulas = [c for row in ws.iter_rows() for c in row if c.data_type == "f"]
-        if ws.title in ("DCF", "WACC", "Scenarios"):
+        if ws.title in ("DCF", "WACC", "Scenarios", "LBO"):
             assert formulas, f"{ws.title} should use live formulas"
         else:
             assert not formulas, f"{ws.title} should hold values only"
@@ -89,3 +94,34 @@ def test_euro_workbook_without_risk_free_rate(tmp_path):
         calc = load_workbook(tmp_path / "out" / "eur.xlsx", data_only=True)
         assert calc["WACC"]["C18"].value == "#N/A"
         assert calc["DCF"]["B46"].value == "#N/A"                      # value per share: N/A, not a number
+
+
+def _row(ws, label, column=1):
+    return next(c.row for c in ws[get_column_letter(column)] if isinstance(c.value, str) and c.value.startswith(label))
+
+
+@pytest.mark.skipif(shutil.which("soffice") is None, reason="LibreOffice not installed")
+@pytest.mark.parametrize("switch", [2, 1])
+def test_lbo_sheet_formulas_match_python(data, tmp_path, switch):
+    choices = summary.default_choices(data)
+    tv = data["companies"]["TGT"]["values"]
+    inputs = lbo.default_inputs(data["short_rate"]["rate"], choices["risk_free"])
+    inputs.update(exit_multiple=lbo.current_multiple(tv) + 0.5, exit_year=4, premium=0.30)
+    inputs["tranches"][1]["maturity"] = 3            # notes repaid in Year 3: exercises the maturity rule
+    inputs["tranches"][0]["multiple"] = 1.0          # small enough to be repaid
+    src = tmp_path / "lbo.xlsx"
+    src.write_bytes(export.build_workbook(data, choices, scenario_switch=switch, lbo_inputs=inputs))
+    subprocess.run(["soffice", "--headless", "--convert-to", "xlsx", "--outdir", str(tmp_path / "out"), str(src)],
+                   check=True, capture_output=True, timeout=180)
+    ws = load_workbook(tmp_path / "out" / "lbo.xlsx", data_only=True)["LBO"]
+    sc = scenarios.default_scenarios(data, "TGT", ["WMT", "COST", "KR", "DG", "BJ"], choices)
+    runs = scenarios.run_scenarios(data, choices, {k: sc[k] for k in ("bear", "base", "bull")}, "TGT")
+    kw = runs[["bear", "base", "bull"][switch - 1]]["run_kwargs"]
+    r = lbo.run_lbo(kw, tv, inputs)
+    assert ws[f"B{_row(ws, 'IRR (Excel IRR')}"].value == pytest.approx(r["returns"]["irr"], rel=1e-7)
+    assert ws[f"B{_row(ws, 'MOIC')}"].value == pytest.approx(r["returns"]["moic"], rel=1e-9)
+    assert ws[f"E{_row(ws, 'Sponsor equity', 4)}"].value == pytest.approx(r["sources_uses"]["sponsor_equity"] / 1e6)
+    assert ws[f"D{_row(ws, 'At the target IRR')}"].value == pytest.approx(lbo.max_price(kw, tv, inputs), rel=1e-9)
+    assert ws[f"F{_row(ws, 'Total debt, end')}"].value == pytest.approx(
+        r["schedule"].loc["Total debt, end"].iloc[-1] / 1e6, abs=1e-6)
+    assert ws[f"C{_row(ws, 'Taxes')}"].value == pytest.approx(r["schedule"].loc["Taxes", "Year 1"] / 1e6)

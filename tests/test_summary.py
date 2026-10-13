@@ -75,7 +75,7 @@ def test_data_warnings_list_missing_fields_and_52_week_mismatch():
     t["high_52w"] = t["price"] * 0.9
     w = summary.data_warnings(data, "TGT", ["WMT", "COST"])
     assert w[0]["text"].startswith("Some data could not be downloaded")
-    assert "**WMT**: lease liabilities (N/A as a result: net debt and EV: EV multiples and DCF)" in w[0]["text"]
+    assert "**WMT**: lease liabilities (N/A as a result: net debt and EV: EV multiples, DCF and LBO)" in w[0]["text"]
     assert "outside its 52-week range" in w[1]["text"] and "TGT" in w[1]["text"]
 
 

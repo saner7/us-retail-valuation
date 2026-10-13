@@ -26,6 +26,7 @@ import comps
 import config
 import data_loader as dl
 import dcf
+import lbo
 import precedents
 import scenarios
 import summary
@@ -44,6 +45,7 @@ def price_format(currency: str) -> str:
 FMT_PCT = '0.0%;(0.0%);"-"'
 FMT_MULT = '0.0"x";(0.0"x");"-"'
 FMT_NUM = '0.000'
+FMT_PCT2 = '0.00%;(0.00%);"-"'
 
 # Styles: blue = input, black = formula, green = link to another sheet
 FONT = Font(name="Arial", size=10)
@@ -339,7 +341,238 @@ def _dcf_sheet(wb, model: dict, target: str, ccy: str, switch: int = 2):
          "the result depends heavily on long-term assumptions.", font=NOTE)
     _widths(ws, {"A": 44, "B": 15, "C": 15, "D": 13, "E": 13, "F": 13, "G": 13})
     ws.freeze_panes = "B5"
-    return ws, v
+    return ws, v, p, arow
+
+
+def _lbo_sheet(wb, values: dict, inputs: dict, result: dict, dcf_rows: dict, dcf_arow: dict, target: str,
+               ccy: str, scenario: str):
+    """LBO with live formulas. Operating lines link to the DCF sheet (which follows
+    the scenario switch); everything else is calculated here. Interest is charged
+    on opening balances, so there is no circular reference."""
+    ws = wb.create_sheet("LBO", 2)
+    col = get_column_letter
+    n = result["exit"]["year"]
+    first, last = 3, 3 + n - 1                      # Year 1..N in columns C.. (same letters as the DCF sheet)
+    L = col(last)
+    tranches = inputs["tranches"]
+    _title(ws, f"{target} - Leveraged buyout (LBO)",
+           f"Blue cells on yellow are inputs; debt terms and fees are ILLUSTRATIVE ASSUMPTIONS. Money in {ccy} "
+           f"millions. Operating lines link to the DCF sheet ({scenario} scenario at export: change DCF!B13 to switch).")
+
+    # --- Inputs ----------------------------------------------------------------
+    _header(ws, 4, ["Inputs", "Value", "Note"])
+    e = result["entry"]
+    rows = [
+        (5, f"Current share price ({ccy})", "=DCF!B10", price_format(ccy), "DCF sheet"),
+        (6, "Shares outstanding (m)", "=DCF!B9", FMT_MONEY, "DCF sheet"),
+        (7, f"Net debt ({ccy}m)", "=DCF!B8", FMT_MONEY, "DCF sheet: debt excl. leases - cash"),
+        (8, f"Existing debt repaid ({ccy}m)", values["debt_for_ev"] / M, FMT_MONEY, "Financial debt, excl. leases"),
+        (9, f"Existing cash ({ccy}m)", values["cash"] / M, FMT_MONEY, "Yahoo"),
+        (10, f"TTM EBITDA ({ccy}m)", values["ebitda_ttm"] / M, FMT_MONEY, "One-offs removed; debt is sized on it"),
+        (11, f"TTM revenue ({ccy}m)", "=DCF!B5", FMT_MONEY, "DCF sheet"),
+        (12, "Premium over the current price", e["premium"], FMT_PCT, "Illustrative assumption"),
+        (13, f"Offer price per share ({ccy})", "=B5*(1+B12)", price_format(ccy), ""),
+        (14, f"Entry enterprise value ({ccy}m)", "=B13*B6+B7", FMT_MONEY, "Offer price x shares + net debt"),
+        (15, "Entry EV / EBITDA", "=B14/B10", FMT_MULT, ""),
+        (16, "Transaction fees (% of entry EV)", inputs["transaction_fee_pct"], FMT_PCT, "Illustrative assumption"),
+        (17, "Financing fees (% of new debt)", inputs["financing_fee_pct"], FMT_PCT, "Illustrative assumption"),
+        (18, "Minimum cash (% of revenue)", inputs["min_cash_pct"], FMT_PCT, "Illustrative assumption"),
+        (19, "Exit EV / EBITDA", result["exit"]["multiple"], FMT_MULT,
+         "Default: the target's current trading multiple (no premium)"),
+        (20, "Target IRR", inputs["target_irr"], FMT_PCT, "The fund's required return"),
+        (21, "Deductible interest cap (% of EBITDA)", config.LBO_INTEREST_DEDUCTION_CAP, FMT_PCT,
+         "US section 163(j), simplified: the excess is ignored"),
+    ]
+    for r, label, value, fmt, note in rows:
+        _put(ws, r, 1, label)
+        formula = isinstance(value, str) and value.startswith("=")
+        if formula:
+            _put(ws, r, 2, value, fmt, font=LINK if "DCF!" in value else FONT)
+        else:
+            _put(ws, r, 2, value, fmt, font=INPUT, fill=INPUT_FILL)
+        _put(ws, r, 3, note, font=NOTE)
+
+    # --- Debt tranches -----------------------------------------------------------
+    t0 = 23
+    _header(ws, t0, ["Debt tranche", "x EBITDA", "Base rate", "Spread", "Interest rate", "Amortization (% a year)",
+                     "Maturity (years)", "Cash sweep (1 = yes)", f"Amount ({ccy}m)"])
+    trow = {}
+    for i, t in enumerate(tranches):
+        r = t0 + 1 + i
+        trow[t["name"]] = r
+        _put(ws, r, 1, f"{t['name']} ({t['rate_type']})")
+        for c, v, f in [(2, t["multiple"], FMT_MULT), (3, t["base_rate"], FMT_PCT2), (4, t["spread"], FMT_PCT2),
+                        (6, t["amortization"], FMT_PCT), (7, t["maturity"], "0"), (8, 1 if t.get("sweep") else 0, "0")]:
+            _put(ws, r, c, v, f, font=INPUT, fill=INPUT_FILL)
+        _put(ws, r, 5, f"=C{r}+D{r}", FMT_PCT2)
+        _put(ws, r, 9, f"=B{r}*$B$10", FMT_MONEY)
+    tot = t0 + 1 + len(tranches)
+    _put(ws, tot, 1, "Total new debt", bold=True)
+    _put(ws, tot, 2, f"=SUM(B{t0 + 1}:B{tot - 1})", FMT_MULT, bold=True)
+    _put(ws, tot, 9, f"=SUM(I{t0 + 1}:I{tot - 1})", FMT_MONEY, bold=True)
+    _put(ws, tot + 1, 1, "Floating base rate: 13-week T-bill (^IRX), a proxy for SOFR. Fixed: 10-year Treasury.",
+         font=NOTE)
+
+    # --- Sources and uses --------------------------------------------------------
+    s0 = tot + 3
+    _header(ws, s0, ["Uses", f"Amount ({ccy}m)", "", "Sources", f"Amount ({ccy}m)", "% of total"])
+    uses = [("Purchase of equity", "=B13*B6"), ("Repay existing debt", "=B8"),
+            ("Transaction fees", "=B16*B14"), ("Financing fees", f"=B17*I{tot}")]
+    for i, (label, f) in enumerate(uses):
+        _put(ws, s0 + 1 + i, 1, label)
+        _put(ws, s0 + 1 + i, 2, f, FMT_MONEY)
+    total_uses = s0 + 1 + len(uses)
+    _put(ws, total_uses, 1, "Total uses", bold=True)
+    _put(ws, total_uses, 2, f"=SUM(B{s0 + 1}:B{total_uses - 1})", FMT_MONEY, bold=True).border = TOTAL_BORDER
+    sources = [(t["name"], f"=I{trow[t['name']]}") for t in tranches]
+    sources.append(("Existing cash above minimum", "=MAX(B9-B18*B11,0)"))
+    for i, (label, f) in enumerate(sources):
+        _put(ws, s0 + 1 + i, 4, label)
+        _put(ws, s0 + 1 + i, 5, f, FMT_MONEY)
+    sponsor = s0 + 1 + len(sources)
+    cash_used = sponsor - 1
+    _put(ws, sponsor, 4, "Sponsor equity (balancing item)", bold=True)
+    _put(ws, sponsor, 5, f"=B{total_uses}-SUM(E{s0 + 1}:E{sponsor - 1})", FMT_MONEY, bold=True)
+    total_src = sponsor + 1
+    _put(ws, total_src, 4, "Total sources", bold=True)
+    _put(ws, total_src, 5, f"=SUM(E{s0 + 1}:E{sponsor})", FMT_MONEY, bold=True).border = TOTAL_BORDER
+    for r in range(s0 + 1, total_src + 1):
+        _put(ws, r, 6, f"=E{r}/E${total_src}", FMT_PCT)
+    opening_cash = max(total_uses, total_src) + 1
+    _put(ws, opening_cash, 1, "Cash after closing")
+    _put(ws, opening_cash, 2, f"=B9-E{cash_used}", FMT_MONEY)
+
+    # --- Schedule ------------------------------------------------------------------
+    h = opening_cash + 2
+    _header(ws, h, [f"Cash flow and debt schedule ({ccy}m)", "Closing"] + [f"Year {i}" for i in range(1, n + 1)])
+    names = ["year", "revenue", "ebitda", "da", "capex", "nwc", "tax_rate"]
+    names += [f"int_{i}" for i in range(len(tranches))]
+    names += ["interest", "pretax", "deductible", "not_deductible", "taxes", "net_income", "fcf", "cash_start",
+              "min_cash", "required", "available"]
+    for i in range(len(tranches)):
+        names += [f"start_{i}", f"req_{i}", f"sweep_{i}", f"end_{i}"]
+    names += ["cash_end", "debt_end", "net_debt_end", "lev", "net_lev", "cover"]
+    R = {name: h + 1 + i for i, name in enumerate(names)}
+    labels = {"year": "Year number", "revenue": "Revenue (DCF sheet)", "ebitda": "EBITDA (DCF sheet)",
+              "da": "D&A (DCF sheet)", "capex": "Capex (DCF sheet)", "nwc": "Increase in NWC (DCF sheet)",
+              "tax_rate": "Tax rate (DCF sheet)", "interest": "Total interest", "pretax": "Pre-tax income",
+              "deductible": "Deductible interest (163(j) cap)", "not_deductible": "Interest not deductible",
+              "taxes": "Taxes", "net_income": "Net income",
+              "fcf": "Free cash flow after interest", "cash_start": "Cash, start of year",
+              "min_cash": "Minimum cash", "required": "Required repayments", "available": "Cash available for sweep",
+              "cash_end": "Cash, end of year", "debt_end": "Total debt, end of year",
+              "net_debt_end": "Net debt, end of year", "lev": "Total debt / EBITDA", "net_lev": "Net debt / EBITDA",
+              "cover": "EBITDA / interest"}
+    for i, t in enumerate(tranches):
+        labels.update({f"int_{i}": f"{t['name']}: interest", f"start_{i}": f"{t['name']}: start of year",
+                       f"req_{i}": f"{t['name']}: required repayment", f"sweep_{i}": f"{t['name']}: cash sweep",
+                       f"end_{i}": f"{t['name']}: end of year"})
+    for name, r in R.items():
+        _put(ws, r, 1, labels[name], bold=name in ("fcf", "debt_end", "cash_end"))
+    for i, t in enumerate(tranches):
+        _put(ws, R[f"end_{i}"], 2, f"=I{trow[t['name']]}", FMT_MONEY)
+    _put(ws, R["cash_end"], 2, f"=B{opening_cash}", FMT_MONEY)
+    _put(ws, R["debt_end"], 2, f"=I{tot}", FMT_MONEY)
+
+    link = {"revenue": "revenue", "ebitda": "ebitda", "da": "d_and_a", "capex": "capex", "nwc": "nwc"}
+    for j in range(n):
+        c, prev = col(first + j), col(first + j - 1)
+        _put(ws, R["year"], first + j, j + 1, "0")
+        for name, key in link.items():
+            _put(ws, R[name], first + j, f"=DCF!{c}{dcf_rows[key]}", FMT_MONEY, font=LINK)
+        _put(ws, R["tax_rate"], first + j, f"=DCF!{c}{dcf_arow['tax_rate']}", FMT_PCT, font=LINK)
+        for i, t in enumerate(tranches):
+            tr = trow[t["name"]]
+            _put(ws, R[f"int_{i}"], first + j, f"=$E${tr}*{c}{R[f'start_{i}']}", FMT_MONEY)
+            _put(ws, R[f"start_{i}"], first + j, f"={prev}{R[f'end_{i}']}", FMT_MONEY)
+            _put(ws, R[f"req_{i}"], first + j,
+                 f"=MIN({c}{R[f'start_{i}']},IF({c}${R['year']}>=$G${tr},{c}{R[f'start_{i}']},$F${tr}*$I${tr}))",
+                 FMT_MONEY)
+            earlier = "+".join(f"{c}{R[f'sweep_{k}']}" for k in range(i)) or "0"
+            _put(ws, R[f"sweep_{i}"], first + j,
+                 f"=IF($H${tr}=1,MIN(MAX({c}{R['available']}-({earlier}),0),{c}{R[f'start_{i}']}-{c}{R[f'req_{i}']}),0)",
+                 FMT_MONEY)
+            _put(ws, R[f"end_{i}"], first + j,
+                 f"={c}{R[f'start_{i}']}-{c}{R[f'req_{i}']}-{c}{R[f'sweep_{i}']}", FMT_MONEY)
+        ints = "+".join(f"{c}{R[f'int_{i}']}" for i in range(len(tranches)))
+        reqs = "+".join(f"{c}{R[f'req_{i}']}" for i in range(len(tranches)))
+        sweeps = "+".join(f"{c}{R[f'sweep_{i}']}" for i in range(len(tranches)))
+        ends = "+".join(f"{c}{R[f'end_{i}']}" for i in range(len(tranches)))
+        f = {
+            "interest": f"={ints}",
+            "pretax": f"={c}{R['ebitda']}-{c}{R['da']}-{c}{R['interest']}",
+            "deductible": f"=MIN({c}{R['interest']},$B$21*{c}{R['ebitda']})",
+            "not_deductible": f"={c}{R['interest']}-{c}{R['deductible']}",
+            "taxes": f"=MAX({c}{R['ebitda']}-{c}{R['da']}-{c}{R['deductible']},0)*{c}{R['tax_rate']}",
+            "net_income": f"={c}{R['pretax']}-{c}{R['taxes']}",
+            "fcf": f"={c}{R['net_income']}+{c}{R['da']}-{c}{R['capex']}-{c}{R['nwc']}",
+            "cash_start": f"={prev}{R['cash_end']}",
+            "min_cash": f"=$B$18*{c}{R['revenue']}",
+            "required": f"={reqs}",
+            "available": f"={c}{R['cash_start']}+{c}{R['fcf']}-{c}{R['required']}-{c}{R['min_cash']}",
+            "cash_end": f"={c}{R['cash_start']}+{c}{R['fcf']}-{c}{R['required']}-({sweeps})",
+            "debt_end": f"={ends}",
+            "net_debt_end": f"={c}{R['debt_end']}-{c}{R['cash_end']}",
+            "lev": f"={c}{R['debt_end']}/{c}{R['ebitda']}",
+            "net_lev": f"={c}{R['net_debt_end']}/{c}{R['ebitda']}",
+            "cover": f"={c}{R['ebitda']}/{c}{R['interest']}",
+        }
+        for name, formula in f.items():
+            fmt = FMT_MULT if name in ("lev", "net_lev", "cover") else FMT_MONEY
+            cell = _put(ws, R[name], first + j, formula, fmt, bold=name in ("fcf", "debt_end", "cash_end"))
+            if name in ("fcf", "debt_end"):
+                cell.border = TOTAL_BORDER
+
+    # --- Exit and returns ----------------------------------------------------------
+    x0 = R["cover"] + 2
+    _header(ws, x0, ["Exit and returns", "Value"])
+    xr = {name: x0 + 1 + i for i, name in enumerate(
+        ["ebitda", "multiple", "ev", "net_debt", "equity", "equity_in", "moic", "irr"])}
+    exit_rows = {
+        "ebitda": (f"EBITDA, Year {n}", f"={L}{R['ebitda']}", FMT_MONEY),
+        "multiple": ("x Exit EV / EBITDA", "=B19", FMT_MULT),
+        "ev": ("= Exit enterprise value", f"=B{x0 + 1}*B{x0 + 2}", FMT_MONEY),
+        "net_debt": ("- Net debt at exit", f"={L}{R['net_debt_end']}", FMT_MONEY),
+        "equity": ("= Sponsor equity at exit", f"=B{x0 + 3}-B{x0 + 4}", FMT_MONEY),
+        "equity_in": ("Sponsor equity at entry", f"=E{sponsor}", FMT_MONEY),
+        "moic": ("MOIC (money out / money in)", f"=B{x0 + 5}/B{x0 + 6}", '0.00"x"'),
+        "irr": ("IRR (Excel IRR of the cash flows below)", None, FMT_PCT),
+    }
+    for name, (label, formula, fmt) in exit_rows.items():
+        _put(ws, xr[name], 1, label, bold=name in ("equity", "irr", "moic"))
+        if formula:
+            _put(ws, xr[name], 2, formula, fmt, bold=name in ("equity", "moic"))
+    cf = xr["irr"] + 2
+    _header(ws, cf, ["Sponsor cash flows", "Closing"] + [f"Year {i}" for i in range(1, n + 1)])
+    _put(ws, cf + 1, 1, f"Equity in (-) / out (+) ({ccy}m)")
+    _put(ws, cf + 1, 2, f"=-B{xr['equity_in']}", FMT_MONEY)
+    for j in range(n):
+        _put(ws, cf + 1, first + j, f"=B{xr['equity']}" if j == n - 1 else 0, FMT_MONEY)
+    _put(ws, xr["irr"], 2, f"=IRR(B{cf + 1}:{L}{cf + 1})", FMT_PCT, bold=True).border = TOTAL_BORDER
+
+    # --- Maximum price -------------------------------------------------------------
+    m0 = cf + 3
+    _header(ws, m0, ["Maximum price per share", "Target IRR", "Equity needed", f"Max price ({ccy})", "vs price"])
+    lo_irr, hi_irr = config.LBO_IRR_RANGE
+    fixed = f"(B8+B16*B7+B{s0 + 4}-I{tot}-E{cash_used})"
+    for i, (label, irr) in enumerate([("At the high IRR", hi_irr), ("At the target IRR", "=B20"), ("At the low IRR", lo_irr)]):
+        r = m0 + 1 + i
+        _put(ws, r, 1, label)
+        _put(ws, r, 2, irr, FMT_PCT, **({} if isinstance(irr, str) else {"font": INPUT, "fill": INPUT_FILL}))
+        _put(ws, r, 3, f"=B{xr['equity']}/(1+B{r})^{n}", FMT_MONEY)
+        _put(ws, r, 4, f"=(C{r}-{fixed})/(B6*(1+B16))", price_format(ccy), bold=True)
+        _put(ws, r, 5, f"=D{r}/B5-1", FMT_PCT)
+    notes = ["Maximum price: with the exit multiple fixed, the cash flows and the exit equity do not depend on the "
+             "price; the price only changes the sponsor's cheque. Equity needed = exit equity / (1 + IRR)^years; "
+             "price = (equity needed - existing debt - fees on net debt - financing fees + new debt + cash used) "
+             "/ (shares x (1 + transaction fee %)).", *lbo.SIMPLIFICATIONS]
+    for i, t in enumerate(notes):
+        _put(ws, m0 + 5 + i, 1, t, font=NOTE)
+    _widths(ws, {"A": 42, "B": 13, "C": 13, "D": 30, "E": 13, "F": 13, "G": 13, "H": 13, "I": 13})
+    ws.freeze_panes = "B5"
+    return {"irr": f"B{xr['irr']}", "moic": f"B{xr['moic']}", "equity_in": f"E{sponsor}",
+            "max_price": f"D{m0 + 2}", "max_price_low": f"D{m0 + 1}", "max_price_high": f"D{m0 + 3}",
+            "debt_end": f"{L}{R['debt_end']}", "taxes_1": f"C{R['taxes']}"}
 
 
 def _scenarios_sheet(wb, runs: dict, sc_defaults: dict, weights: dict, target: str, ccy: str):
@@ -724,11 +957,13 @@ def _history_sheet(wb, data, target, reference):
 
 def build_workbook(data: dict, choices: dict, target: str = None, peers: list = None,
                    scenario_values: dict = None, weights: dict = None, scenario_switch: int = 2,
-                   precedent_deals: pd.DataFrame = None, precedent_settings: dict = None) -> bytes:
+                   precedent_deals: pd.DataFrame = None, precedent_settings: dict = None,
+                   lbo_inputs: dict = None) -> bytes:
     """The full model as an .xlsx file (bytes), for st.download_button or a file.
     `choices` are the app's (Base) inputs (summary.default_choices() for the defaults);
     `scenario_values` the Bear/Base/Bull values (scenarios.default_scenarios() if omitted);
-    `scenario_switch` the scenario the DCF sheet shows (1 Bear, 2 Base, 3 Bull)."""
+    `scenario_switch` the scenario the DCF sheet shows (1 Bear, 2 Base, 3 Bull), also the LBO's operations;
+    `lbo_inputs` the LBO tab's inputs (lbo.default_inputs() with today's multiple as exit if omitted)."""
     target = target or config.TARGET
     peers = peers if peers is not None else [t for t in data["companies"] if t != target]
     ccy = summary.target_currency(data, target)
@@ -749,8 +984,17 @@ def build_workbook(data: dict, choices: dict, target: str = None, peers: list = 
     target_values = data["companies"][target]["values"]
     prec_applies = precedents.applicable(data["companies"][target]["meta"], target, prec_all[prec_mask])
     prec_row = precedents.football_field_row(target_values, prec_all[prec_mask]) if prec_applies else None
+    lbo_sc = config.SCENARIOS[scenario_switch - 1]
+    lbo_kw = runs[lbo_sc]["run_kwargs"]
+    if lbo_inputs is None:
+        lbo_inputs = lbo.default_inputs(data.get("short_rate", {}).get("rate", np.nan), choices["risk_free"])
+        lbo_inputs["exit_multiple"] = lbo.current_multiple(target_values)
+    lbo_ready = (target_values.get("ebitda_ttm") or 0) > 0 and not any(
+        pd.isna(x) for x in [lbo_inputs["exit_multiple"], *[t["base_rate"] for t in lbo_inputs["tranches"]]])
+    lbo_result = lbo.run_lbo(lbo_kw, target_values, lbo_inputs) if lbo_ready else None
+    lbo_row = lbo.football_field_row(lbo_kw, target_values, lbo_inputs, lbo_result) if lbo_ready else None
     ff = summary.football_field_data(data["companies"], kw, target, peers, scenario_runs=runs if has_wacc else None,
-                                     precedent_row=prec_row)
+                                     precedent_row=prec_row, lbo_row=lbo_row)
     sc_table = scenarios.results_table(runs, weights)
 
     rf = data["risk_free"]
@@ -763,8 +1007,14 @@ def build_workbook(data: dict, choices: dict, target: str = None, peers: list = 
 
     wb = Workbook()
     _summary_sheet(wb, data, model, ff, reverse, results, target, peers, ccy, sc_table)
-    _dcf_sheet(wb, model, target, ccy, scenario_switch)
+    _, _, dcf_rows, dcf_arow = _dcf_sheet(wb, model, target, ccy, scenario_switch)
     _scenarios_sheet(wb, runs, sc_defaults, weights, target, ccy)
+    if lbo_ready:                           # placed right after the DCF sheet
+        _lbo_sheet(wb, target_values, lbo_inputs, lbo_result, dcf_rows, dcf_arow, target, ccy,
+                   config.SCENARIO_LABELS[lbo_sc])
+    else:
+        ws = wb.create_sheet("LBO", 2)
+        _title(ws, "LBO: N/A", "Enter the base rates (and a risk-free rate) in the app; the LBO needs positive EBITDA.")
     _wacc_sheet(wb, model, target, defaults["historical_cost_of_debt"], ccy, rf_note)
     if has_wacc:
         _sensitivity_sheet(wb, tables, kw["price"], ccy)

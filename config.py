@@ -154,7 +154,45 @@ FF_GROWTH_DELTA = 0.005
 FF_MULTIPLE_DELTA = 1.0
 # Rows of the football field, top to bottom. P/B stays in the comps tables but is
 # not on the chart (see comps.MULTIPLE_NOTES).
-FOOTBALL_FIELD_ROWS = ["52w", "ev_ebitda", "pe", "ev_sales", "prec_ev_ebitda", "dcf_exit", "dcf_gordon"]
+FOOTBALL_FIELD_ROWS = ["52w", "ev_ebitda", "pe", "ev_sales", "prec_ev_ebitda", "lbo", "dcf_exit", "dcf_gordon"]
+
+# --- LBO (leveraged buyout) -------------------------------------------------
+# Every number below is an ILLUSTRATIVE ASSUMPTION (not market data): a typical
+# shape for a large sponsor buyout, editable in the app. Market data used by the
+# LBO: the share price, the 10-year Treasury (^TNX, fixed-rate notes) and the
+# 13-week Treasury bill (^IRX) as a PROXY for SOFR, the floating base rate.
+SHORT_RATE_TICKER = "^IRX"
+LBO_PREMIUM = 0.25                # offer price over the current share price
+LBO_TRANSACTION_FEE_PCT = 0.015   # advisory, legal and other deal costs, % of entry EV
+LBO_FINANCING_FEE_PCT = 0.02      # arrangement fees, % of new debt
+LBO_MIN_CASH_PCT = 0.02           # cash the business keeps to operate, % of revenue
+LBO_TARGET_IRR = 0.20             # sponsor's required return; the range is 15%-25%
+LBO_IRR_RANGE = (0.15, 0.25)
+LBO_EXIT_YEAR = 5
+LBO_TRANCHES = [
+    # multiple = x entry EBITDA; floating rate = base rate + spread; fixed rate = 10y Treasury + spread
+    {"name": "Term Loan B", "multiple": 3.0, "rate_type": "floating", "spread": 0.0325,
+     "amortization": 0.01, "maturity": 7, "sweep": True},
+    {"name": "Senior Notes", "multiple": 2.0, "rate_type": "fixed", "spread": 0.035,
+     "amortization": 0.0, "maturity": 8, "sweep": False},
+]
+LBO_MIN_INTEREST_COVERAGE = 2.0   # EBITDA / interest below this: warning
+# Interagency Guidance on Leveraged Lending (Fed, OCC, FDIC, March 2013): total
+# debt / EBITDA above 6x "raises concerns for most industries".
+LBO_MAX_LEVERAGE = 6.0
+# US tax code section 163(j): net interest deduction limited to 30% of adjusted
+# taxable income (EBITDA-based). Not modelled; a warning is shown instead.
+LBO_INTEREST_DEDUCTION_CAP = 0.30
+# Largest sponsor take-privates, for the feasibility note (company press releases filed with the SEC)
+LBO_LARGEST_DEALS = [
+    {"name": "Electronic Arts (PIF, Silver Lake, Affinity Partners, 2025)", "ev": 55e9, "equity": 36e9,
+     "debt": 20e9, "source": "https://www.sec.gov/Archives/edgar/data/712515/000114036125036415/ef20056167_ex99-1.htm",
+     "note": "EV ~$55bn, equity ~$36bn, $20bn committed debt; called the largest all-cash sponsor "
+             "take-private in history (EA 8-K Ex.99.1, 2025-09-29)"},
+    {"name": "TXU (KKR, TPG, 2007)", "ev": 45e9, "equity": None, "debt": None,
+     "source": "https://www.sec.gov/Archives/edgar/data/1023291/000095013407004081/d44014exv99w1.htm",
+     "note": "transaction valued at $45bn (TXU 8-K Ex.99.1, 2007-02-26)"},
+]
 
 # --- SEC EDGAR -------------------------------------------------------------
 # The SEC asks every automated request to identify itself in the User-Agent and
