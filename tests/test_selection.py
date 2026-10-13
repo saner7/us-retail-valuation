@@ -64,8 +64,8 @@ def test_no_saved_copy_message_names_the_saved_companies(monkeypatch, tmp_path):
     monkeypatch.setattr(config, "CACHE_DIR", tmp_path / "cache")
     monkeypatch.setattr(dl, "fetch_from_yahoo", lambda t: (_ for _ in ()).throw(RuntimeError("429 Too Many Requests")))
     with pytest.raises(dl.DataUnavailable) as err:
-        dl.get_company_raw("HD")              # the real data/snapshot has only the default set
-    assert "no saved copy" in str(err.value) and "TGT" in str(err.value)
+        dl.get_company_raw("RACE.MI")         # not in the S&P 500: no saved copy
+    assert "no saved copy" in str(err.value) and "the S&P 500 and the default set" in str(err.value)
 
 
 # --- currencies ---------------------------------------------------------------------

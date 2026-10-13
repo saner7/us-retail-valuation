@@ -396,7 +396,7 @@ EBITDAR, i.e. before rent) is also consistent, but Yahoo does not report rent fo
   hardware makers but is valued like the platform companies; Ferrari as an automaker but trades
   like a luxury brand). Suggestions cover the S&P 500 only, and the market caps used to rank them
   are from one date (13 October 2026). On the live app, Yahoo may block some of the downloads for a
-  larger group; the app then lists the missing fields.
+  larger group; the app then falls back to the saved data (dated) or lists the missing fields.
 - **Cyclical sectors**: the DCF defaults use the last three years' averages, which can mislead in
   cyclical industries such as energy, where those years may sit at a high or low point of the
   commodity cycle. For ExxonMobil the default Gordon value was $299 against a $172 price, helped by
@@ -417,6 +417,7 @@ precedents.py          precedent transactions: loading, filters, EV/EBITDA range
 lbo.py                 LBO: sources & uses, debt schedule, IRR / MOIC, maximum price
 peers.py               peer suggestions: GICS sub-industry, sector fallback, size, curated groups
 build_universe.py      downloads the S&P 500 list (Wikipedia) and market caps (Yahoo)
+build_snapshot.py      saves the fallback data for every S&P 500 company (data/snapshot/)
 export.py              Excel export (DCF, WACC, Scenarios and LBO as live formulas)
 app.py                 Streamlit app
 data/manual_overrides.csv
@@ -441,7 +442,8 @@ pip install -r requirements-dev.txt   # or requirements.txt if you don't need th
 
 python data_loader.py            # snapshot, annual history and data quality report
 python data_loader.py --refresh  # ignore the 24h cache and download again
-python data_loader.py --refresh --save-snapshot   # also update the committed fallback data
+python data_loader.py --refresh --save-snapshot   # also update the committed fallback data (default set)
+python build_snapshot.py --all   # saved fallback data for every S&P 500 company (see Deploying)
 python build_universe.py         # refresh the S&P 500 list and market caps (~10 min)
 python comps.py                  # comparable companies analysis
 python dcf.py                    # DCF valuation in the terminal
@@ -459,9 +461,19 @@ variable rather than in the code (the SEC rejects requests without one):
 - Main file: `app.py`. In **Advanced settings** choose **Python 3.12** (Community Cloud ignores
   `runtime.txt`; the version can only be changed by deleting and redeploying the app).
 - No secrets or API keys are needed.
-- Yahoo Finance often rate-limits shared cloud servers. If the live download fails, the app
-  opens with the saved data in `data/snapshot/` and shows a warning saying so. Refresh the
-  snapshot from time to time with `python data_loader.py --refresh --save-snapshot` and push it.
+- Yahoo Finance often blocks shared cloud servers (it answers with empty data). The app tries the
+  live download first (an empty answer is retried twice); if it still fails, it opens with the
+  saved data in `data/snapshot/` and says so at the top: "Live data unavailable; showing saved data
+  as of [date]". The sidebar always shows the date of the target's saved data.
+- `data/snapshot/` holds every S&P 500 company plus the default set, the 10-year Treasury and the
+  13-week T-bill. Only the statement rows the model reads are kept (about 3 KB per company).
+  Refresh it from a machine where Yahoo is not blocked, then commit and push:
+  ```bash
+  python build_snapshot.py --all                  # every company (~30-40 min, slowed down on purpose)
+  python build_snapshot.py --all --missing-only   # only companies without saved data yet
+  python build_snapshot.py TSLA ABBV              # selected tickers
+  ```
+  Companies outside the S&P 500 (e.g. `RACE.MI`) have saved data only if added this way.
 
 ## Picking a company and its peers (Stage S)
 The sidebar offers two ways in: **Pick from S&P 500** (searchable by name or ticker) or **Enter

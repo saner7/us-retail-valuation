@@ -208,13 +208,35 @@ def _is_fresh(fetched_at: str, max_age_hours: float) -> bool:
     return datetime.now() - datetime.fromisoformat(fetched_at) < timedelta(hours=max_age_hours)
 
 
-def save_company_cache(ticker: str, data: dict) -> None:
-    config.CACHE_DIR.mkdir(parents=True, exist_ok=True)
-    paths = _cache_paths(ticker)
+def snapshot_rows() -> dict:
+    """The statement rows the model reads, per statement (everything else is dropped from
+    the committed snapshot to keep the repository small). Derived from the constants above."""
+    annual = {}
+    for (stmt, row), _ in ANNUAL_ITEMS.items():
+        annual.setdefault(stmt, []).extend([row] + ANNUAL_ALTERNATES.get(row, []))
+    income = list(dict.fromkeys(annual["income"] + list(TTM_ROWS.values())))
+    debt = [r for pair in DEBT_WITH_AND_WITHOUT_LEASES for r in pair]
+    return {"income": income, "income_q": income, "cashflow": annual["cashflow"],
+            "balance_q": ["Capital Lease Obligations", "Stockholders Equity"] + debt, "balance": []}
+
+
+def save_company_cache(ticker: str, data: dict, directory=None, trim: bool = False) -> None:
+    """Save to the cache (default) or another directory. trim=True keeps only snapshot_rows()
+    and skips statements the model never reads."""
+    directory = directory or config.CACHE_DIR
+    directory.mkdir(parents=True, exist_ok=True)
+    paths = _cache_paths(ticker, directory)
     with open(paths["snapshot"], "w") as f:
-        json.dump({"snapshot": data["snapshot"], "meta": data["meta"]}, f, indent=2)
+        json.dump({"snapshot": data["snapshot"], "meta": data["meta"]}, f, indent=None if trim else 2)
+    keep = snapshot_rows() if trim else None
     for name in STATEMENTS:
-        data["statements"][name].to_csv(paths[name])
+        df = data["statements"][name]
+        if keep is not None:
+            if not keep[name]:
+                paths[name].unlink(missing_ok=True)
+                continue
+            df = df.loc[[r for r in keep[name] if r in df.index]]
+        df.to_csv(paths[name])
 
 
 def load_company_cache(ticker: str, directory=None):
@@ -264,8 +286,18 @@ def get_company_raw(ticker: str, refresh: bool = False) -> dict:
         saved = snapshot_tickers()
         raise DataUnavailable(
             f"{ticker}: the download from Yahoo Finance failed ({str(e)[:120]}) and there is no saved copy "
-            f"of its data. Saved fallback data exists only for {', '.join(saved) or 'no company'}. "
+            f"of its data. Saved fallback data exists for {len(saved)} companies (the S&P 500 and the default "
+            f"set, e.g. {', '.join(saved[:3]) or 'none'}). "
             f"Yahoo often blocks shared cloud servers for a while: try again later.") from e
+
+
+def snapshot_date(ticker: str) -> str | None:
+    """Date of the committed snapshot of `ticker` (YYYY-MM-DD), None if there is none."""
+    path = config.SNAPSHOT_DIR / f"{ticker}_snapshot.json"
+    if not path.exists():
+        return None
+    with open(path) as f:
+        return json.load(f)["meta"].get("fetched_at", "")[:10] or None
 
 
 def snapshot_tickers() -> list:

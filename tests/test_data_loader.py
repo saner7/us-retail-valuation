@@ -7,6 +7,7 @@ import math
 
 import numpy as np
 import pandas as pd
+import pytest
 
 import data_loader as dl
 
@@ -315,3 +316,45 @@ def test_empty_yahoo_answer_is_retried_and_explained(monkeypatch):
     monkeypatch.setattr(dl, "load_company_cache", lambda t, d=None: None)
     with pytest.raises(dl.DataUnavailable, match="did not return data for ABBV"):
         dl.get_company_raw("ABBV", refresh=True)
+
+
+def test_trimmed_snapshot_keeps_what_the_model_reads(tmp_path, monkeypatch):
+    import config
+    q = pd.to_datetime(["2026-07-31", "2026-04-30", "2026-01-31", "2025-10-31"])
+    y = pd.to_datetime(["2024-01-31", "2025-01-31", "2026-01-31"])
+    rows = dl.snapshot_rows()
+    stmts = {
+        "income": pd.DataFrame(1.0, index=rows["income"] + ["Other Junk"], columns=y),
+        "income_q": pd.DataFrame(2.0, index=rows["income_q"] + ["Other Junk"], columns=q),
+        "cashflow": pd.DataFrame(3.0, index=rows["cashflow"] + ["Free Cash Flow"], columns=y),
+        "balance_q": pd.DataFrame(4.0, index=rows["balance_q"] + ["Goodwill"], columns=q),
+        "balance": pd.DataFrame(5.0, index=["Goodwill"], columns=y),
+    }
+    data = {"snapshot": {"price": 10.0}, "meta": {"ticker": "XYZ", "fetched_at": "2026-10-13T10:00:00"},
+            "statements": stmts}
+    monkeypatch.setattr(config, "SNAPSHOT_DIR", tmp_path)
+    dl.save_company_cache("XYZ", data, tmp_path, trim=True)
+    back = dl.load_company_cache("XYZ", tmp_path)
+    assert not (tmp_path / "XYZ_balance.csv").exists()          # never read by the model
+    assert "Other Junk" not in back["statements"]["income"].index
+    assert "Goodwill" not in back["statements"]["balance_q"].index
+    assert dl.annual_history(back["statements"]).equals(dl.annual_history(stmts))
+    assert dl.replace_ttm({"price": 10.0}, back["statements"]["income_q"]) == \
+        dl.replace_ttm({"price": 10.0}, stmts["income_q"])
+    assert dl.snapshot_date("XYZ") == "2026-10-13" and dl.snapshot_date("NONE") is None
+
+
+def test_blocked_download_falls_back_to_snapshot(tmp_path, monkeypatch):
+    import config
+
+    def blocked(ticker):
+        raise dl.YahooEmpty("Yahoo Finance did not return data")
+    monkeypatch.setattr(config, "SNAPSHOT_DIR", tmp_path / "snap")
+    monkeypatch.setattr(config, "CACHE_DIR", tmp_path / "cache")
+    monkeypatch.setattr(dl, "fetch_from_yahoo", blocked)
+    data = {"snapshot": {"price": 10.0}, "meta": {"ticker": "TSLA", "fetched_at": "2026-10-13T10:00:00"},
+            "statements": {n: pd.DataFrame() for n in dl.STATEMENTS}}
+    dl.save_company_cache("TSLA", data, config.SNAPSHOT_DIR, trim=True)
+    with pytest.warns(UserWarning, match="using snapshot"):
+        got = dl.get_company_raw("TSLA", refresh=True)
+    assert got["meta"]["data_source"] == "snapshot" and got["snapshot"]["price"] == 10.0
