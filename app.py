@@ -195,7 +195,10 @@ def excel_bytes(key: str, _data: dict, _choices: dict, target: str, peers: tuple
 
 tickers = (TARGET, *PEERS)
 refresh_now = st.session_state.get("refresh_for") == tickers
-data = load_data(tickers, st.session_state.refresh_token if refresh_now else 0, refresh_now)
+load_args = (tickers, st.session_state.refresh_token if refresh_now else 0, refresh_now)
+data = load_data(*load_args)
+if data["errors"]:
+    load_data.clear(*load_args)      # do not keep a failed download for 24h: Analyze again retries it
 if TARGET in data["errors"]:
     st.error(f"Could not load the target company. {data['errors'][TARGET]}")
     st.stop()

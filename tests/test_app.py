@@ -231,3 +231,22 @@ def test_sector_fallback_warning(app):
     assert "filled from the Energy sector" in sidebar_warnings(at)
     next(b for b in at.button if b.label == "Analyze").click().run()
     assert any("filled from the Energy sector" in w.value for w in at.warning)
+
+
+def test_failed_download_is_not_cached(monkeypatch):
+    calls = []
+
+    def flaky(tickers=None, refresh=False):
+        calls.append(1)
+        data = fake_load_all(tickers, refresh)
+        if len(calls) == 1:                                # Yahoo blocks the first try
+            data["errors"] = {tickers[0]: f"Yahoo Finance did not return data for {tickers[0]}."}
+        return data
+    monkeypatch.setattr(dl, "load_all", flaky)
+    monkeypatch.setattr(dl, "load_overrides", lambda path=None: pd.DataFrame(columns=dl.OVERRIDE_COLUMNS))
+    st.cache_data.clear()
+    at = AppTest.from_file("../app.py", default_timeout=60)
+    at.run()
+    assert any("did not return data for TGT" in e.value for e in at.error)
+    at.run()                                               # e.g. pressing Analyze again
+    assert not at.error and "(TGT)" in at.title[0].value

@@ -290,3 +290,28 @@ def test_annual_history_uses_alternative_row_names():
     cf = pd.DataFrame({y: [5.0, -9.0] for y in years}, index=["Depreciation Amortization Depletion", "Capital Expenditure"])
     hist = dl.annual_history({"cashflow": cf, "income": pd.DataFrame()})
     assert list(hist["d_and_a"]) == [5.0, 5.0]           # like ExxonMobil: D&A reported with depletion
+
+
+class _EmptyTicker:
+    calls = 0
+
+    def __init__(self, ticker):
+        _EmptyTicker.calls += 1
+        self.info = {}
+
+
+def test_empty_yahoo_answer_is_retried_and_explained(monkeypatch):
+    import config
+    import pytest
+    monkeypatch.setattr(dl.yf, "Ticker", _EmptyTicker)
+    monkeypatch.setattr(dl.time, "sleep", lambda s: None)
+    _EmptyTicker.calls = 0
+    with pytest.raises(dl.YahooEmpty, match="did not return data for ABBV.*not a wrong ticker"):
+        dl.fetch_from_yahoo("ABBV")                        # in the S&P 500 list: known to be valid
+    assert _EmptyTicker.calls == config.YAHOO_RETRIES + 1
+    with pytest.raises(dl.TickerNotFound, match="Check the spelling.*temporarily blocking"):
+        dl.fetch_from_yahoo("NOSUCH1")                     # unknown: maybe a typo
+    # no cache or snapshot for ABBV: the app gets the same message
+    monkeypatch.setattr(dl, "load_company_cache", lambda t, d=None: None)
+    with pytest.raises(dl.DataUnavailable, match="did not return data for ABBV"):
+        dl.get_company_raw("ABBV", refresh=True)
