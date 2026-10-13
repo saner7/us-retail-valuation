@@ -70,3 +70,21 @@ def test_financial_warning_and_unknown_ticker(universe):
     assert peers.suggest_peers("aaa-b", u)["target"]["name"] == "Alpha B"     # Yahoo format, any case
     unknown = peers.suggest_peers("EEE", u)                                  # target without a market cap
     assert unknown["peers"]["size_vs_target"].isna().all() and "not ranked by size" in unknown["warnings"][-1]
+
+
+def test_curated_groups_size_warning_and_table(universe, tmp_path):
+    u, _ = universe
+    path = tmp_path / "c.csv"
+    path.write_text("# comment\ntarget,peers,rationale,source_date\nAAA,DDD GOOGL,Judgment,2026-10-13\n")
+    c = peers.load_curated(path)
+    assert peers.curated_for("aaa", c) == {"peers": ["DDD", "GOOGL"], "rationale": "Judgment",
+                                           "source_date": "2026-10-13"}
+    assert peers.curated_for("BBB", c) is None
+    # AAA is 100bn: GOOGL is exactly 10x (not beyond), DDD 4x -> no warning
+    assert peers.size_warning("AAA", ["DDD", "GOOGL"], u) is None
+    assert peers.size_warning("SOLO", ["OIL"], u) is None                          # 300 / 30 = exactly 10x
+    assert peers.size_warning("PIP", ["OIL", "BNK"], u) == peers.SIZE_WARNING       # 12x and 20x
+    assert peers.size_warning("PIP", ["OIL", "UNKNOWN"], u) == peers.SIZE_WARNING   # unknown peers ignored
+    t = peers.peer_table("AAA", ["BBB", "XYZ"], u, {"BBB": "same sub-industry"})
+    assert t.loc[0, "Size vs target"] == 0.5 and t.loc[1, "Sub-industry"] == "not in the S&P 500 list"
+    assert list(t["Reason"]) == ["same sub-industry", "added by you"]

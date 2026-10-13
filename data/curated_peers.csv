@@ -1,0 +1,5 @@
+# Curated peer groups: analyst judgment, used before the GICS suggestion when the target is listed here.
+# peers are Yahoo Finance tickers separated by spaces.
+target,peers,rationale,source_date
+AAPL,MSFT GOOGL META AMZN,"The market prices Apple like the large platform companies, not like hardware makers, because of its high-margin services revenue and its ecosystem; GICS classifies these companies in different sectors.",2026-10-13
+TGT,WMT COST KR DG BJ,"The group used in this project's main analysis. Kroger is included because it competes with Target in grocery retail, and BJ's, although not in the S&P 500, because its business model is similar.",2026-10-13

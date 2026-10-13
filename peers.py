@@ -92,3 +92,58 @@ def suggest_peers(target: str, universe: pd.DataFrame, n: int = None) -> dict:
     if pd.isna(cap):
         warnings.append(f"No saved market cap for {row['yahoo_ticker']}: peers are not ranked by size.")
     return {"peers": peers.reset_index(drop=True), "fallback_used": fallback, "target": row, "warnings": warnings}
+
+
+# ---------------------------------------------------------------------------
+# Curated groups and the size check
+# ---------------------------------------------------------------------------
+
+CURATED_LABEL = "Curated peer group (analyst judgment)"
+GICS_LABEL = "GICS suggestion"
+SIZE_WARNING = "Peers differ greatly in size from the target; multiples may not be comparable."
+NOTE = ("Suggested peers are based on GICS classification and size. Choosing a peer group is an analyst's "
+        "judgment: for example, Apple is classified with hardware makers but is often valued against large "
+        "platform companies, and Ferrari is classified as an automaker but trades like a luxury brand.")
+
+
+def load_curated(path=None) -> pd.DataFrame:
+    df = pd.read_csv(path or config.CURATED_PEERS_PATH, comment="#", dtype=str)
+    df["target"] = df["target"].str.strip().str.upper()
+    return df
+
+
+def curated_for(target: str, curated: pd.DataFrame) -> dict | None:
+    hit = curated[curated["target"] == target.strip().upper()]
+    if hit.empty:
+        return None
+    r = hit.iloc[0]
+    return {"peers": r["peers"].split(), "rationale": r["rationale"], "source_date": r["source_date"]}
+
+
+def size_warning(target: str, peer_tickers: list, universe: pd.DataFrame) -> str | None:
+    """SIZE_WARNING if every peer with a known market cap is below 1/PEERS_SIZE_GAP or above
+    PEERS_SIZE_GAP times the target's."""
+    row = find(universe, target)
+    if row is None or not row["market_cap"] > 0:
+        return None
+    ratios = [p["market_cap"] / row["market_cap"] for p in (find(universe, t) for t in peer_tickers)
+              if p is not None and p["market_cap"] > 0]
+    gap = config.PEERS_SIZE_GAP
+    if ratios and all(r < 1 / gap or r > gap for r in ratios):
+        return SIZE_WARNING
+    return None
+
+
+def peer_table(target: str, peer_tickers: list, universe: pd.DataFrame, reasons: dict = None) -> pd.DataFrame:
+    """One row per peer: sub-industry, market cap, size vs target and why it is there."""
+    row = find(universe, target)
+    cap = row["market_cap"] if row is not None else np.nan
+    out = []
+    for t in peer_tickers:
+        p = find(universe, t)
+        out.append({"Peer": t,
+                    "Sub-industry": p["gics_sub_industry"] if p is not None else "not in the S&P 500 list",
+                    "Market cap ($bn)": p["market_cap"] / 1e9 if p is not None else np.nan,
+                    "Size vs target": p["market_cap"] / cap if p is not None and cap > 0 else np.nan,
+                    "Reason": (reasons or {}).get(t, "added by you")})
+    return pd.DataFrame(out)

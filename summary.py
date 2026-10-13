@@ -255,6 +255,9 @@ FIELD_EFFECTS = {
 }
 
 
+FINANCIAL_NOT_REPORTED = {"ebitda_ttm", "lease_liabilities"}
+
+
 def data_warnings(data: dict, target: str, peers: list) -> list:
     """Problems with the downloaded data itself, for the top of the app:
     fields Yahoo did not deliver (and what shows N/A because of them), and a
@@ -264,12 +267,15 @@ def data_warnings(data: dict, target: str, peers: list) -> list:
         c = data["companies"].get(t)
         if c is None:
             continue
-        gone = [f for f in FIELD_EFFECTS if c["sources"].get(f) == "missing"]
+        # Yahoo reports no EBITDA, leases or capex for banks and insurers: not a failed download, and the
+        # financial-company warning already says EV/EBITDA and the DCF do not apply
+        skip = FINANCIAL_NOT_REPORTED if _is_financial_meta(c["meta"]) else set()
+        gone = [f for f in FIELD_EFFECTS if c["sources"].get(f) == "missing" and f not in skip]
         if gone:
             effects = sorted({FIELD_EFFECTS[f][1] for f in gone})
             missing.append(f"**{t}**: {', '.join(FIELD_EFFECTS[f][0] for f in gone)} "
                            f"(N/A as a result: {'; '.join(effects)})")
-        if t == target:
+        if t == target and not skip:
             items = [col for col in c["history"].columns if c["history"][col].isna().all()] \
                 if not c["history"].empty else ["all annual statements"]
             if items:

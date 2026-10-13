@@ -92,3 +92,12 @@ def test_football_field_axis_includes_price_bars_and_labels():
     fig = charts.football_field(rows, 100.0, "t")                 # price below every bar
     lo, hi = fig.layout.xaxis.range
     assert lo < 100.0 and hi > 306.0
+
+
+def test_data_warnings_skip_fields_banks_do_not_report():
+    data = make_data(["JPM", "BAC"], industries={"JPM": "Banks - Diversified", "BAC": "Banks - Diversified"})
+    for t in ("JPM", "BAC"):
+        data["companies"][t]["sources"]["ebitda_ttm"] = "missing"
+    assert summary.data_warnings(data, "JPM", ["BAC"]) == []
+    data["companies"]["BAC"]["sources"]["cash"] = "missing"            # a real gap is still reported
+    assert "**BAC**: cash" in summary.data_warnings(data, "JPM", ["BAC"])[0]["text"]

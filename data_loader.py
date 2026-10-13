@@ -80,6 +80,8 @@ ANNUAL_ITEMS = {
     ("cashflow", "Capital Expenditure"): "capex",
     ("cashflow", "Change In Working Capital"): "change_in_wc",
 }
+# Other names Yahoo uses for the same line (energy and mining companies report D&A with depletion)
+ANNUAL_ALTERNATES = {"Depreciation And Amortization": ["Depreciation Amortization Depletion"]}
 
 
 def is_missing(x) -> bool:
@@ -503,10 +505,8 @@ def annual_history(statements: dict) -> pd.DataFrame:
     rows = {}
     for (stmt, yf_row), name in ANNUAL_ITEMS.items():
         df = statements.get(stmt, pd.DataFrame())
-        if not df.empty and yf_row in df.index:
-            rows[name] = df.loc[yf_row]
-        else:
-            rows[name] = pd.Series(dtype=float)
+        found = [r for r in [yf_row] + ANNUAL_ALTERNATES.get(yf_row, []) if not df.empty and r in df.index]
+        rows[name] = df.loc[found[0]] if found else pd.Series(dtype=float)
     hist = pd.DataFrame(rows)
     if hist.empty:
         return hist
