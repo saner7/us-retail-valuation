@@ -287,6 +287,18 @@ def get_risk_free_rate(currency: str = "USD", refresh: bool = False) -> dict:
     return {**base, **r}
 
 
+def get_short_rate(refresh: bool = False) -> dict:
+    """13-week US Treasury bill yield (^IRX), used by the LBO as a proxy for
+    SOFR, the floating base rate of leveraged loans. Rate is NaN if it cannot
+    be downloaded and there is no saved copy (the user then enters it)."""
+    try:
+        r = _cached_series("short_rate.json", lambda: fetch_risk_free_from_yahoo(config.SHORT_RATE_TICKER), refresh)
+    except Exception as e:
+        return {"rate": np.nan, "date": None, "fetched_at": None, "data_source": "unavailable",
+                "error": str(e)[:200]}
+    return r
+
+
 def get_fx_rate(from_ccy: str, to_ccy: str, refresh: bool = False) -> dict:
     """Exchange rate: 1 unit of from_ccy in to_ccy (Yahoo "EURUSD=X").
     rate is NaN if it cannot be downloaded and there is no saved copy."""
@@ -693,9 +705,10 @@ def save_snapshot(tickers=None) -> None:
         for path in _cache_paths(t).values():
             if path.exists():
                 shutil.copy2(path, config.SNAPSHOT_DIR / path.name)
-    rf = config.CACHE_DIR / "risk_free_rate.json"
-    if rf.exists():
-        shutil.copy2(rf, config.SNAPSHOT_DIR / rf.name)
+    for name in ["risk_free_rate.json", "short_rate.json"]:
+        rf = config.CACHE_DIR / name
+        if rf.exists():
+            shutil.copy2(rf, config.SNAPSHOT_DIR / rf.name)
 
 
 def snapshot_table(companies: dict) -> pd.DataFrame:
