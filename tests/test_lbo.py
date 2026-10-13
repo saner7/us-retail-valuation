@@ -54,17 +54,19 @@ def test_year_one_cash_flow_sweep_and_returns():
     y = r["schedule"]["Year 1"]
     # interest on opening balances: 10% x 600 + 8% x 200 = 76
     assert y["Interest"] == pytest.approx(76)
-    # (200 - 50 - 76) = 74 pre-tax, 18.5 tax, 55.5 net income; FCF = 55.5 + 50 - 50
-    assert y["Taxes"] == pytest.approx(18.5) and y["Free cash flow (after interest)"] == pytest.approx(55.5)
-    # required 1% x 600 = 6; sweep = cash 20 + 55.5 - 6 - minimum 20 = 49.5
-    assert y["TLB: required repayment"] == pytest.approx(6) and y["TLB: cash sweep"] == pytest.approx(49.5)
-    assert y["TLB: end"] == pytest.approx(544.5) and y["Notes: end"] == pytest.approx(200)
+    # 163(j): only 30% x 200 = 60 of the 76 is deductible; tax = (200 - 50 - 60) x 25% = 22.5
+    assert y["Interest not deductible (163(j))"] == pytest.approx(16) and y["Taxes"] == pytest.approx(22.5)
+    # pre-tax income 74 - 22.5 = 51.5 net income; FCF = 51.5 + 50 - 50
+    assert y["Free cash flow (after interest)"] == pytest.approx(51.5)
+    # required 1% x 600 = 6; sweep = cash 20 + 51.5 - 6 - minimum 20 = 45.5
+    assert y["TLB: required repayment"] == pytest.approx(6) and y["TLB: cash sweep"] == pytest.approx(45.5)
+    assert y["TLB: end"] == pytest.approx(548.5) and y["Notes: end"] == pytest.approx(200)
     assert y["Cash, end of year"] == pytest.approx(20)
     assert y["EBITDA / interest"] == pytest.approx(200 / 76)
-    # exit: 6.75 x 200 = 1,350 - net debt (744.5 - 20) = 625.5; MOIC = IRR + 1 after one year
+    # exit at today's multiple (1,000 + 100) / 200 = 5.5x: 1,100 - net debt (748.5 - 20) = 371.5
     x, ret = r["exit"], r["returns"]
-    assert x["equity"] == pytest.approx(625.5)
-    assert ret["moic"] == pytest.approx(625.5 / 599.5) and ret["irr"] == pytest.approx(625.5 / 599.5 - 1)
+    assert x["multiple"] == pytest.approx(5.5) and x["equity"] == pytest.approx(371.5)
+    assert ret["moic"] == pytest.approx(371.5 / 599.5) and ret["irr"] == pytest.approx(371.5 / 599.5 - 1)
 
 
 def test_irr_over_several_years_is_compound():
@@ -80,8 +82,8 @@ def test_irr_over_several_years_is_compound():
 def test_max_price_hits_target_irr_with_fixed_exit_multiple():
     inp = inputs(exit_year=5)
     p = lbo.max_price(RUN_KWARGS, VALUES, inp, 0.20)
-    entry_multiple = lbo.run_lbo(RUN_KWARGS, VALUES, inp)["entry"]["entry_multiple"]
-    at_p = lbo.run_lbo(RUN_KWARGS, VALUES, inputs(exit_year=5, premium=p / 10 - 1, exit_multiple=entry_multiple))
+    at_p = lbo.run_lbo(RUN_KWARGS, VALUES, inputs(exit_year=5, premium=p / 10 - 1))
+    assert at_p["exit"]["multiple"] == pytest.approx(5.5)       # today's multiple, whatever the price
     assert at_p["returns"]["irr"] == pytest.approx(0.20, abs=1e-4)
     rng = lbo.price_range(RUN_KWARGS, VALUES, inp)
     assert rng["mid"] == pytest.approx(p) and rng["low"] < p < rng["high"]   # 25% IRR < 20% < 15%
@@ -103,7 +105,7 @@ def test_warnings():
     short["tranches"][1]["maturity"] = 1                # notes due in Year 1, not enough cash
     assert any("Cash turns negative" in x for x in lbo.run_lbo(RUN_KWARGS, VALUES, short)["warnings"])
     base = lbo.run_lbo(RUN_KWARGS, VALUES, inputs())["warnings"]     # 76 interest = 38% of EBITDA
-    assert len(base) == 1 and "section 163(j)" in base[0]
+    assert len(base) == 1 and "section 163(j)" in base[0] and "Year 1" in base[0]
 
 
 def test_exit_year_must_be_in_projection():

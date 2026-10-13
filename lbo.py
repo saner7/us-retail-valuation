@@ -33,15 +33,18 @@ SIMPLIFICATIONS = [
     "Interest is charged on the debt balance at the start of each year (no circular reference); "
     "repayments during the year do not lower that year's interest.",
     "No interest income on cash; no revolving credit facility, so a cash shortfall is only flagged.",
-    "Interest is fully tax-deductible: the US limit (section 163(j), about 30% of EBITDA) is not "
-    "modelled; a warning is shown when interest is above it.",
+    "US interest deduction limit (section 163(j)), simplified: deductible interest is capped at 30% "
+    "of EBITDA each year and the excess is ignored (in reality it carries forward to later years).",
     "Taxes are never negative and losses are not carried forward.",
     "Fees are paid at closing and not amortised; no management options or equity pool, no "
     "dividends or dividend recaps; the sponsor owns 100% of the equity.",
     "No tax or fees at exit; leases stay off balance sheet debt, as in the rest of the model.",
-    "The exit multiple is held fixed while solving for the maximum price (by default at the entry "
-    "multiple implied by the default premium). Tying it to the entry price would let a higher "
-    "purchase price raise its own assumed sale price, which makes the answer circular.",
+    "The exit multiple defaults to the target's current trading EV/EBITDA, not the entry multiple: "
+    "the entry multiple includes the takeover premium, so exiting there assumes the fund sells above "
+    "today's market value, and sponsors usually underwrite more cautiously. It is held fixed while "
+    "solving for the maximum price; tying it to the entry price would let a higher purchase price "
+    "raise its own assumed sale price, which makes the answer circular. Exiting at the entry "
+    "multiple is shown in the sensitivity table.",
     "The floating base rate is the 13-week Treasury bill yield (^IRX), a proxy for SOFR, held flat "
     "for all years; the fixed rate is the 10-year Treasury plus a spread.",
 ]
@@ -56,7 +59,7 @@ def default_inputs(base_rate: float, treasury_10y: float) -> dict:
     return {
         "premium": config.LBO_PREMIUM,
         "entry_multiple": None,           # set to value the entry at a multiple instead of a premium
-        "exit_multiple": None,            # None = the entry multiple
+        "exit_multiple": None,            # None = the target's current trading EV/EBITDA
         "exit_year": config.LBO_EXIT_YEAR,
         "tranches": tranches,
         "transaction_fee_pct": config.LBO_TRANSACTION_FEE_PCT,
@@ -68,6 +71,12 @@ def default_inputs(base_rate: float, treasury_10y: float) -> dict:
 
 def tranche_rate(t: dict) -> float:
     return t["base_rate"] + t["spread"]
+
+
+def current_multiple(values: dict) -> float:
+    """The target's EV/EBITDA at today's share price (no premium)."""
+    market_cap = values.get("market_cap") or values["price"] * values["shares_outstanding"]
+    return (market_cap + values["net_debt"]) / values["ebitda_ttm"]
 
 
 def entry_terms(values: dict, inputs: dict) -> dict:
@@ -130,7 +139,8 @@ def run_lbo(run_kwargs: dict, values: dict, inputs: dict) -> dict:
         interest = {t["name"]: tranche_rate(t) * bal[t["name"]] for t in tranches}
         total_interest = sum(interest.values())
         ebt = col["ebitda"] - col["d_and_a"] - total_interest
-        taxes = max(ebt, 0.0) * tax[i]
+        deductible = min(total_interest, config.LBO_INTEREST_DEDUCTION_CAP * col["ebitda"])   # section 163(j)
+        taxes = max(col["ebitda"] - col["d_and_a"] - deductible, 0.0) * tax[i]
         net_income = ebt - taxes
         fcf = net_income + col["d_and_a"] - col["capex"] - col["increase_in_nwc"]
         mandatory = {}
@@ -148,7 +158,8 @@ def run_lbo(run_kwargs: dict, values: dict, inputs: dict) -> dict:
         cash = cash + fcf - sum(mandatory.values()) - sum(sweep.values())
 
         put("Revenue", col["revenue"]); put("EBITDA", col["ebitda"]); put("D&A", col["d_and_a"])
-        put("Interest", total_interest); put("Pre-tax income", ebt); put("Taxes", taxes)
+        put("Interest", total_interest); put("Pre-tax income", ebt)
+        put("Interest not deductible (163(j))", total_interest - deductible); put("Taxes", taxes)
         put("Net income", net_income); put("Capex", col["capex"])
         put("Increase in NWC", col["increase_in_nwc"]); put("Free cash flow (after interest)", fcf)
         put("Cash, start of year", cash_begin); put("Minimum cash", min_cash)
@@ -168,7 +179,7 @@ def run_lbo(run_kwargs: dict, values: dict, inputs: dict) -> dict:
 
     schedule = pd.DataFrame(rows, index=[f"Year {i + 1}" for i in range(n)]).T
 
-    exit_multiple = inputs["exit_multiple"] if inputs.get("exit_multiple") is not None else entry["entry_multiple"]
+    exit_multiple = inputs["exit_multiple"] if inputs.get("exit_multiple") is not None else current_multiple(values)
     exit_ebitda = schedule.loc["EBITDA"].iloc[-1]
     exit_ev = exit_multiple * exit_ebitda
     exit_net_debt = schedule.loc["Net debt, end"].iloc[-1]
@@ -210,10 +221,12 @@ def lbo_warnings(r: dict) -> list:
     if low:
         out.append(f"Interest coverage (EBITDA / interest) is below {config.LBO_MIN_INTEREST_COVERAGE:.0f}x in "
                    f"{', '.join(low)}: little room if EBITDA falls.")
-    if c["max_interest_share"] > config.LBO_INTEREST_DEDUCTION_CAP:
-        out.append(f"Interest reaches {c['max_interest_share']:.0%} of EBITDA. US tax law (section 163(j)) "
-                   f"limits the deduction to about {config.LBO_INTEREST_DEDUCTION_CAP:.0%} of EBITDA; the model "
-                   "deducts all of it, so taxes are understated and returns overstated.")
+    capped = s.loc["Interest not deductible (163(j))"]
+    if (capped > 0).any():
+        years = [y for y, v in capped.items() if v > 0]
+        out.append(f"Interest is above {config.LBO_INTEREST_DEDUCTION_CAP:.0%} of EBITDA in {', '.join(years)}: "
+                   "under US tax law (section 163(j)) the excess is not deductible, so taxes are higher. The "
+                   "model ignores the excess instead of carrying it forward (slightly conservative).")
     short = [y for y, v in s.loc["Cash, end of year"].items() if v < 0]
     if short:
         out.append(f"Cash turns negative in {', '.join(short)}: the debt cannot be serviced without a "
@@ -241,7 +254,7 @@ def max_price(run_kwargs: dict, values: dict, inputs: dict, target_irr: float = 
               tol: float = 1e-4) -> float:
     """Highest offer price per share at which the sponsor still earns
     `target_irr`. The exit multiple is fixed at its value in the run with the
-    user's inputs (see SIMPLIFICATIONS). NaN if no price in a wide range works."""
+    user's inputs (by default the current trading multiple; see SIMPLIFICATIONS). NaN if no price in a wide range works."""
     target_irr = inputs["target_irr"] if target_irr is None else target_irr
     base = run_lbo(run_kwargs, values, inputs)
     fixed = {**inputs, "exit_multiple": base["exit"]["multiple"]}
