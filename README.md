@@ -321,6 +321,14 @@ debt would be 2.9x EBITDA. The quick check agrees (the target earns 5.3% on the 
 payment costs about 5.5%). Only the amortization of $0.76bn a year separates "dilutive" from
 "accretive": which EPS a company quotes decides how the deal sounds.
 
+*Note on the amortization assumption.* The Target / Dollar General example uses the illustrative default
+that 30% of the price above book value becomes amortisable intangibles, written off over 10 years. In the
+real Dick's / Foot Locker deal the amortization is tiny: only $220m of identifiable intangibles is
+amortized (about $0.9m a year), because most of the trademarks ($210m) have indefinite lives and are not
+amortized. So the 30% / 10-year default may overstate the amortization effect, and the gap between the
+"incl." and "excl." EPS in the Target example may be too wide. In real deals this share varies a lot
+with the purchase accounting; the inputs are editable.
+
 **The earnings basis can reverse the answer: Coca-Cola buys Keurig Dr Pepper** (same date, same
 defaults, 50% stock). With Yahoo's analyst consensus (KO $3.52, KDP $2.53, offer P/E 16.1x) Year 1 EPS rises
 **+2.8% incl. / +7.4% excl.** deal amortization and no synergies are needed. With trailing net
@@ -374,6 +382,9 @@ fiscal 2024 level (illustrative).
   first-quarter results, and the deal is still accretive in the model. The caveats: both (b) cases are built
   from adjusted EBITDA, which excludes items (such as stock compensation) that GAAP earnings include; and
   the model, which gives a number where Dick's gave only "accretive", agrees on the sign, not on size.
+- **Basis (b) is not fully like-for-like.** It uses Foot Locker's fiscal 2026E projection but Dick's
+  trailing-twelve-month EPS ($14.17). If Dick's earnings also grow over that period, the buyer's EPS
+  base is higher and the percentage accretion would be lower than shown.
 
 ### Data quality checks
 Missing fields, zero or negative EBITDA, losses (P/E excluded), negative equity, price outside
@@ -523,6 +534,7 @@ EBITDAR, i.e. before rent) is also consistent, but Yahoo does not report rent fo
   separate workbook with a static breakeven premium. The Dick's / Foot Locker inputs are historical (May 2025,
   from the filings); the Foot Locker projection-based earnings are derived with illustrative D&A, interest and
   tax assumptions, and Dick's has no forecast in the documents read.
+  The amortization in that deal is tiny, so the 30% / 10-year default may overstate the effect elsewhere.
 - **Banks and insurers**: Yahoo reports no EBITDA, lease or capex lines for them, so EV multiples,
   the DCF and the LBO stay N/A; P/E and P/B are shown instead.
 
