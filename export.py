@@ -955,6 +955,167 @@ def _history_sheet(wb, data, target, reference):
 # Public entry point
 # ---------------------------------------------------------------------------
 
+def _merger_sheet(wb, acq: dict, tgt: dict, inp: dict, result: dict, ccy: str, breakeven_premium: float):
+    """M&A (accretion / dilution) with live formulas. Inputs in blue on yellow; everything below
+    them is calculated. Money in millions, shares in millions, EPS per share."""
+    import merger
+    ws = wb.create_sheet("M&A")
+    col = get_column_letter
+    _title(ws, f"HYPOTHETICAL: {acq['ticker']} acquires {tgt['ticker']} (illustration only, not a recommendation "
+               "or a forecast)",
+           f"Blue cells on yellow are inputs; illustrative assumptions are marked. Money in {ccy} millions, shares in "
+           f"millions, EPS in {ccy}. Earnings: {acq['ticker']} {acq['eps_source']}; {tgt['ticker']} "
+           f"{tgt['eps_source']}. Fiscal years end {acq['fiscal_year_end']} / {tgt['fiscal_year_end']} "
+           "(not calendarised).")
+    price_fmt = price_format(ccy)
+    rows = [   # row, label, value, format, note
+        (4, "BUYER", None, None, acq["name"]),
+        (5, f"Share price ({ccy})", acq["price"], price_fmt, "Yahoo"),
+        (6, "Shares outstanding (m)", acq["shares"] / M, FMT_MONEY, "Yahoo"),
+        (7, f"EPS, Year 1 ({ccy})", acq["eps"], FMT_NUM2, acq["eps_source"]),
+        (8, "Earnings growth, Year 2", acq["growth_y2"], FMT_PCT, "DCF Base revenue growth, Year 2"),
+        (9, "Revenue (TTM)", acq["revenue"] / M, FMT_MONEY, ""),
+        (10, "Cash", acq["cash"] / M, FMT_MONEY, ""),
+        (11, "Financial debt (excl. leases)", acq["debt"] / M, FMT_MONEY, ""),
+        (12, "EBITDA (TTM)", acq["ebitda"] / M, FMT_MONEY, ""),
+        (13, "Interest expense (last fiscal year)", acq["interest"] / M, FMT_MONEY, ""),
+        (14, "TARGET", None, None, tgt["name"]),
+        (15, f"Share price ({ccy})", tgt["price"], price_fmt, "Yahoo"),
+        (16, "Shares outstanding (m)", tgt["shares"] / M, FMT_MONEY, "Yahoo"),
+        (17, f"EPS, Year 1 ({ccy})", tgt["eps"], FMT_NUM2, tgt["eps_source"]),
+        (18, "Earnings growth, Year 2", tgt["growth_y2"], FMT_PCT, "DCF Base revenue growth, Year 2"),
+        (19, "Revenue (TTM)", tgt["revenue"] / M, FMT_MONEY, ""),
+        (20, "Financial debt (excl. leases)", tgt["debt"] / M, FMT_MONEY, ""),
+        (21, "Net debt", tgt["net_debt"] / M, FMT_MONEY, ""),
+        (22, "Book equity", tgt["book_equity"] / M, FMT_MONEY, "Basis of the purchase price allocation"),
+        (23, "EBITDA (TTM)", tgt["ebitda"] / M, FMT_MONEY, ""),
+        (24, "Interest expense (last fiscal year)", tgt["interest"] / M, FMT_MONEY, ""),
+        (25, "DEAL ASSUMPTIONS", None, None, ""),
+        (26, "Premium over the target's price", inp["premium"], FMT_PCT, "Illustrative assumption"),
+        (27, f"Offer price override ({ccy}; 0 = use the premium)", inp["offer_price"] or 0, price_fmt, ""),
+        (28, "Paid in stock", inp["stock_pct"], FMT_PCT, "Rest in cash: the buyer's spare cash first, then new debt"),
+        (29, "Interest rate on new debt", inp["debt_rate"], FMT_PCT2, "Illustrative: 10-year Treasury + credit spread"),
+        (30, "Interest rate earned on cash", inp["cash_rate"], FMT_PCT2, "13-week T-bill (^IRX)"),
+        (31, "Refinance the target's debt (1 = yes, 0 = assume it)", 1 if inp["refinance_target_debt"] else 0, "0", ""),
+        (32, "Run-rate cost synergies (pre-tax)", inp["cost_synergies"] / M, FMT_MONEY, "Illustrative: 1% of target sales"),
+        (33, "Run-rate revenue synergies (pre-tax profit)", inp["revenue_synergies"] / M, FMT_MONEY, ""),
+        (34, "Share of synergies realised, Year 1", inp["phase_in"][0], FMT_PCT, "Illustrative assumption"),
+        (35, "Share of synergies realised, Year 2", inp["phase_in"][1], FMT_PCT, "Illustrative assumption"),
+        (36, "Integration cost (x run-rate synergies)", inp["integration_cost_x"], "0.0", "Illustrative; one-off, not in adjusted EPS"),
+        (37, "Transaction fees (% of target enterprise value)", inp["fee_pct"], FMT_PCT, "Illustrative; one-off"),
+        (38, "Intangibles (% of the excess over book value)", inp["intangibles_pct"], FMT_PCT, "Illustrative assumption"),
+        (39, "Amortisation period (years)", inp["amortisation_years"], "0", "Illustrative assumption"),
+        (40, "Minimum cash kept (% of buyer revenue)", inp["min_cash_pct"], FMT_PCT, "Illustrative assumption"),
+        (41, "Buyer tax rate", inp["tax_rate"], FMT_PCT, "DCF tax rate (last 3 fiscal years)"),
+    ]
+    _header(ws, 3, ["Inputs", "Value", "Note"])
+    for r, label, value, fmt, note in rows:
+        header = value is None
+        _put(ws, r, 1, label, bold=header)
+        if not header:
+            _put(ws, r, 2, value, fmt, font=INPUT, fill=INPUT_FILL)
+        _put(ws, r, 3, note, font=NOTE)
+
+    calc = [   # row, label, formula, format
+        (44, "Offer price per share", "=IF(B27>0,B27,B15*(1+B26))", price_fmt),
+        (45, "Equity purchase price", "=B44*B16", FMT_MONEY),
+        (46, "Transaction fees", "=B37*(B45+B21)", FMT_MONEY),
+        (47, "Target debt refinanced", "=IF(B31=1,B20,0)", FMT_MONEY),
+        (48, "Paid in new buyer shares", "=B28*B45", FMT_MONEY),
+        (49, "Cash needed (rest of the price + fees + refinancing)", "=B45-B48+B46+B47", FMT_MONEY),
+        (50, "Buyer's spare cash", "=MAX(B10-B40*B9,0)", FMT_MONEY),
+        (51, "Cash used", "=MIN(B50,B49)", FMT_MONEY),
+        (52, "New debt", "=B49-B51", FMT_MONEY),
+        (53, "New buyer shares (m)", "=B48/B5", FMT_NUM2),
+        (54, "Pro forma shares (m)", "=B6+B53", FMT_NUM2),
+        (55, "Excess of the price over book equity", "=MAX(B45-B22,0)", FMT_MONEY),
+        (56, "Amortisable intangibles", "=B38*B55", FMT_MONEY),
+        (57, "Goodwill (not amortised)", "=B55-B56", FMT_MONEY),
+        (58, "Annual amortisation (pre-tax)", "=B56/B39", FMT_MONEY),
+        (59, "Run-rate synergies", "=B32+B33", FMT_MONEY),
+        (60, "Offer P/E", "=B44/B17", FMT_MULT),
+        (61, "Premium paid", "=B44/B15-1", FMT_PCT),
+        (62, "Ownership: buyer shareholders", "=B6/B54", FMT_PCT),
+        (63, "Ownership: target shareholders", "=B53/B54", FMT_PCT),
+    ]
+    _header(ws, 43, ["Transaction", "Value"])
+    for r, label, f, fmt in calc:
+        _put(ws, r, 1, label, bold=r in (44, 52, 54))
+        _put(ws, r, 2, f, fmt, bold=r in (44, 52, 54))
+    _header(ws, 65, ["Sources and uses", f"Amount ({ccy}m)", "", "", "Sources", f"Amount ({ccy}m)"])
+    uses = [("Purchase of target equity", "=B45"), ("Transaction fees", "=B46"), ("Refinance target debt", "=B47")]
+    sources = [("New buyer shares", "=B48"), ("Buyer's excess cash", "=B51"), ("New debt", "=B52")]
+    for i, ((ul, uf), (sl, sf)) in enumerate(zip(uses, sources)):
+        _put(ws, 66 + i, 1, ul); _put(ws, 66 + i, 2, uf, FMT_MONEY)
+        _put(ws, 66 + i, 5, sl); _put(ws, 66 + i, 6, sf, FMT_MONEY)
+
+    _header(ws, 70, ["Pro forma earnings", "Year 1", "Year 2"])
+    labels = {
+        71: "Buyer net income", 72: "Target net income", 73: "Synergies realised (pre-tax)",
+        74: "Interest on new debt (pre-tax)", 75: "Interest lost on cash (pre-tax)",
+        76: "Target interest saved (pre-tax)", 77: "Net income before synergies and amortisation",
+        78: "Pro forma net income, cash basis (amortisation excluded)", 79: "Amortisation (pre-tax)",
+        80: "Pro forma net income, GAAP (after amortisation)", 81: "Pro forma shares (m)",
+        82: "Buyer EPS, standalone", 83: "Pro forma EPS, GAAP", 84: "Pro forma EPS, cash",
+        85: "Accretion / (dilution), GAAP", 86: "Accretion / (dilution) %, GAAP",
+        87: "Accretion / (dilution), cash", 88: "Accretion / (dilution) %, cash",
+        89: "Breakeven synergies (realised in the year, GAAP EPS unchanged)",
+        90: "Breakeven run-rate synergies"}
+    for r, label in labels.items():
+        _put(ws, r, 1, label, bold=r in (83, 84, 86, 88))
+    for c, y in ((2, 0), (3, 1)):
+        k = col(c)
+        phase = "B34" if y == 0 else "B35"
+        f = {
+            71: (f"=B7*B6" if y == 0 else "=B7*B6*(1+B8)", FMT_MONEY),
+            72: (f"=B17*B16" if y == 0 else "=B17*B16*(1+B18)", FMT_MONEY),
+            73: (f"=B59*{phase}", FMT_MONEY), 74: ("=B29*B52", FMT_MONEY), 75: ("=B30*B51", FMT_MONEY),
+            76: ("=IF(B31=1,B24,0)", FMT_MONEY),
+            77: (f"={k}71+{k}72+(-{k}74-{k}75+{k}76)*(1-B41)", FMT_MONEY),
+            78: (f"={k}77+{k}73*(1-B41)", FMT_MONEY), 79: ("=B58", FMT_MONEY),
+            80: (f"={k}78-{k}79*(1-B41)", FMT_MONEY), 81: ("=B54", FMT_NUM2),
+            82: (f"={k}71/B6", FMT_NUM2), 83: (f"={k}80/{k}81", FMT_NUM2), 84: (f"={k}78/{k}81", FMT_NUM2),
+            85: (f"={k}83-{k}82", FMT_NUM2), 86: (f"={k}83/{k}82-1", FMT_PCT),
+            87: (f"={k}84-{k}82", FMT_NUM2), 88: (f"={k}84/{k}82-1", FMT_PCT),
+            89: (f"=({k}82*{k}81-({k}77-{k}79*(1-B41)))/(1-B41)", FMT_MONEY),
+            90: (f"=IF({phase}=0,NA(),{k}89/{phase})", FMT_MONEY)}
+        for r, (formula, fmt) in f.items():
+            _put(ws, r, c, formula, fmt, bold=r in (83, 84, 86, 88))
+
+    _header(ws, 92, ["Pro forma credit (Year 1)", "Value"])
+    credit = [(93, "Debt", "=B11+B52+IF(B31=1,0,B20)", FMT_MONEY),
+              (94, "EBITDA (incl. Year 1 synergies)", "=B12+B23+B59*B34", FMT_MONEY),
+              (95, "Interest", "=B13+IF(B31=1,0,B24)+B29*B52", FMT_MONEY),
+              (96, "Debt / EBITDA", "=B93/B94", FMT_MULT), (97, "EBITDA / interest", "=B94/B95", FMT_MULT)]
+    for r, label, f, fmt in credit:
+        _put(ws, r, 1, label); _put(ws, r, 2, f, fmt)
+    _put(ws, 98, 1, "Warning: above 3x the borrowing spread would likely be higher; above 4x a heavy load.", font=NOTE)
+    _put(ws, 100, 1, "Breakeven premium (Year 1, synergies included)")
+    _put(ws, 100, 2, None if pd.isna(breakeven_premium) else breakeven_premium, FMT_PCT)
+    _put(ws, 100, 3, "Value at export (calculated in Python): the share count changes with the premium, so Excel needs "
+                     "Goal Seek: set B86 to 0 by changing B26.", font=NOTE)
+    _put(ws, 101, 1, "One-off costs (not in adjusted EPS): transaction fees (B46) and integration costs:")
+    _put(ws, 101, 2, "=B36*B59", FMT_MONEY)
+    for i, text in enumerate(merger.SIMPLIFICATIONS):
+        _put(ws, 103 + i, 1, text, font=NOTE)
+    _widths(ws, {"A": 56, "B": 15, "C": 15, "D": 4, "E": 24, "F": 15})
+    ws.freeze_panes = "B4"
+    return {"acc_gaap_pct_y1": "B86", "acc_gaap_pct_y2": "C86", "acc_cash_pct_y1": "B88", "eps_gaap_y1": "B83",
+            "eps_cash_y1": "B84", "breakeven_y1": "B89", "own_buyer": "B62", "own_target": "B63",
+            "debt_to_ebitda": "B96", "new_debt": "B52", "new_shares": "B53"}
+
+
+def build_merger_workbook(acq: dict, tgt: dict, inp: dict, result: dict, breakeven_premium: float = float("nan"),
+                          ccy: str = "USD") -> bytes:
+    """A workbook with only the M&A sheet (live formulas), for the M&A tab's download button."""
+    wb = Workbook()
+    wb.remove(wb.active)
+    _merger_sheet(wb, acq, tgt, inp, result, ccy, breakeven_premium)
+    buffer = io.BytesIO()
+    wb.save(buffer)
+    return buffer.getvalue()
+
+
 def build_workbook(data: dict, choices: dict, target: str = None, peers: list = None,
                    scenario_values: dict = None, weights: dict = None, scenario_switch: int = 2,
                    precedent_deals: pd.DataFrame = None, precedent_settings: dict = None,

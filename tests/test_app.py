@@ -29,6 +29,7 @@ def fake_load_all(tickers=None, refresh=False):
 def app(monkeypatch):
     monkeypatch.setattr(dl, "load_all", fake_load_all)
     monkeypatch.setattr(dl, "load_overrides", lambda path=None: pd.DataFrame(columns=dl.OVERRIDE_COLUMNS))
+    st.cache_data.clear()            # a test with another data source must not leave its data behind
     at = AppTest.from_file("../app.py", default_timeout=60)
     at.run()
     return at
@@ -54,7 +55,7 @@ def test_app_runs_and_shows_the_model_result(app):
     r = dcf.run_dcf(**summary.build_model(data, summary.default_choices(data))["run_kwargs"])
     assert metric(at, "DCF: Gordon growth").value == f"${r['gordon']['value_per_share']:,.2f}"
     assert metric(at, "WACC (Gordon)").value.endswith("%")          # reverse DCF box is there
-    assert [t.label for t in at.tabs] == ["Summary", "DCF", "LBO", "Scenarios", "Comps", "Precedent Transactions",
+    assert [t.label for t in at.tabs] == ["Summary", "DCF", "LBO", "M&A", "Scenarios", "Comps", "Precedent Transactions",
                                          "Data & quality"]
 
 
@@ -285,3 +286,54 @@ def test_blocked_yahoo_opens_any_sp500_company_from_saved_data(monkeypatch, tmp_
         assert not at.exception and not at.error, target
         assert f"({target})" in at.title[0].value
         assert any(w.value.startswith("Live data unavailable; showing saved data as of") for w in at.warning)
+
+
+def ma_engine(**changes):
+    """The merger model on the fake data, the way the M&A tab sets it up (TGT buys KR by default)."""
+    import merger
+    data = make_data()
+    sub = {"companies": {t: data["companies"][t] for t in ("TGT", "KR")}, "risk_free": data["risk_free"],
+           "short_rate": data["short_rate"]}
+    acq, tgt = merger.pair_inputs(sub, "TGT", "KR")
+    inp = merger.default_inputs(acq, tgt, summary.default_choices(data)["risk_free"], data["short_rate"]["rate"])
+    inp.update(changes)
+    return merger, acq, tgt, inp, merger.run(acq, tgt, inp)
+
+
+def test_ma_tab_shows_the_hypothetical_warning_and_matches_the_engine(app):
+    at = app
+    assert any(w.value.startswith("**Hypothetical transaction, for illustration only.**") for w in at.warning)
+    merger, acq, tgt, inp, r = ma_engine()
+    assert at.session_state["ma_target_sp"] == "KR"            # the first peer smaller than the buyer
+    y1 = r["years"][0]
+    assert metric(at, "GAAP EPS, Year 1").value == f"{y1['accretion_gaap_pct']:+.1%}"
+    assert metric(at, "Cash EPS, Year 1").value == f"{y1['accretion_cash_pct']:+.1%}"
+    assert metric(at, "Ownership").value == f"{r['ownership']['buyer']:.0%} / {r['ownership']['target']:.0%}"
+    captions = " ".join(c.value for c in at.caption)
+    assert "**GAAP EPS** is after the amortisation" in captions and "which EPS definition is meant" in captions
+    assert "fiscal year ends" in captions
+
+
+def test_ma_assumptions_basis_switch_and_chosen_target(app):
+    at = app
+    at.number_input(key="ma_premium").set_value(40.0).run()
+    merger, acq, tgt, inp, r = ma_engine(premium=0.40)
+    assert not at.exception
+    assert metric(at, "GAAP EPS, Year 1").value == f"{r['years'][0]['accretion_gaap_pct']:+.1%}"
+    at.radio(key="ma_basis").set_value("Cash EPS").run()                  # waterfall and heatmaps switch basis
+    at.radio(key="ma_year").set_value("Year 2").run()
+    assert not at.exception
+    at.radio(key="ma_mode").set_value("Enter ticker manually").run()      # the manual path, a loaded peer
+    at.text_input(key="ma_target_text").set_value("wmt").run()
+    assert not at.exception and at.session_state["ma_for"] == ("TGT", "WMT")
+    at.checkbox(key="ma_refi").set_value(True).run()
+    assert not at.exception
+
+
+def test_ma_different_currency_and_same_company(app):
+    at = app
+    at.radio(key="ma_mode").set_value("Enter ticker manually").run()
+    at.text_input(key="ma_target_text").set_value("RACE.MI").run()
+    assert any("trades in USD and RACE.MI in EUR" in e.value for e in at.error)
+    at.text_input(key="ma_target_text").set_value("TGT").run()
+    assert any("choose a different company" in i.value for i in at.info)

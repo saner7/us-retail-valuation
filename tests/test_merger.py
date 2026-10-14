@@ -4,8 +4,13 @@ Buyer: price 100, 10 shares, EPS 5 (net income 50), cash 150 (minimum 10% of rev
 so 50 is spare). Target: price 50, 4 shares, EPS 4 (net income 16), book equity 100.
 Offer at a 25% premium: 62.5 per share, 250 in total. Tax 25%, new debt 8%, cash earns 4%.
 """
-import pytest
+import shutil
+import subprocess
 
+import pytest
+from openpyxl import load_workbook
+
+import export
 import merger
 from fake_data import make_data
 
@@ -99,3 +104,64 @@ def test_both_companies_use_the_same_earnings_basis():
     data["companies"]["COST"]["meta"]["forward_eps"] = 4.0
     acq, tgt = merger.pair_inputs(data, "WMT", "COST")
     assert acq["eps"] == 3.0 and tgt["eps"] == 4.0 and "analyst consensus" in tgt["eps_source"]
+
+
+def test_bridge_adds_up_to_pro_forma_eps_for_both_definitions():
+    inp = inputs(refinance_target_debt=True, cost_synergies=8.0)
+    r = merger.run(ACQ, TGT, inp)
+    for year in (1, 2):
+        for basis, key in (("gaap", "eps_gaap"), ("cash", "eps_cash")):
+            b = merger.bridge(r, ACQ, year, basis)
+            changes = b[b["kind"] == "change"]["value"].sum()
+            assert b.iloc[0]["value"] + changes == pytest.approx(b.iloc[-1]["value"])
+            assert b.iloc[-1]["value"] == pytest.approx(r["years"][year - 1][key])
+    steps = list(merger.bridge(r, ACQ, 1, "gaap")["step"])
+    assert "Amortisation of intangibles" in steps and "Target interest saved" in steps
+    assert "Amortisation of intangibles" not in list(merger.bridge(r, ACQ, 1, "cash")["step"])
+
+
+def test_sensitivity_grids_contain_the_users_case():
+    inp = inputs(premium=0.25, stock_pct=0.5, cost_synergies=4.0)          # 1% of the target's sales (400)
+    t1 = merger.sensitivity_premium_stock(ACQ, TGT, inp)
+    assert 0.25 in t1.index and 0.5 in t1.columns
+    assert t1.loc[0.25, 0.5] == pytest.approx(merger.run(ACQ, TGT, inp)["years"][0]["accretion_gaap_pct"])
+    assert (t1[0.5].diff().dropna() < 0).all()                             # a higher premium never helps
+    t2 = merger.sensitivity_synergy_premium(ACQ, TGT, inp)
+    assert 0.01 in t2.index and 0.25 in t2.columns
+    assert t2.loc[0.01, 0.25] == pytest.approx(t1.loc[0.25, 0.5])
+    assert (t2[0.25].diff().dropna() > 0).all()                            # more synergies always help
+    cash = merger.sensitivity_premium_stock(ACQ, TGT, inp, "cash")
+    assert (cash.values >= t1.values - 1e-12).all()                        # cash EPS leaves out the amortisation
+
+
+def test_missing_inputs_give_na_instead_of_a_guess():
+    bad = {**TGT, "net_debt": float("nan")}                                # e.g. no lease data for the target
+    assert merger.missing_inputs(ACQ, bad, inputs()) == ["target net debt"]
+    assert merger.missing_inputs(ACQ, TGT, inputs(cash_rate=float("nan"))) == ["cash interest rate"]
+    assert merger.missing_inputs(ACQ, TGT, inputs()) == []
+    import math
+    assert math.isnan(merger.breakeven_premium(ACQ, bad, inputs()))
+
+
+@pytest.mark.skipif(shutil.which("soffice") is None, reason="LibreOffice not installed")
+@pytest.mark.parametrize("changes", [{}, {"refinance_target_debt": True, "stock_pct": 0.2, "premium": 0.4}])
+def test_excel_merger_sheet_matches_python(tmp_path, changes):
+    acq, tgt = {**ACQ, "name": "Buyer", "eps_source": "test"}, {**TGT, "name": "Target", "eps_source": "test"}
+    inp = inputs(cost_synergies=12.0, revenue_synergies=3.0, integration_cost_x=1.5, fee_pct=0.02, **changes)
+    r = merger.run(acq, tgt, inp)
+    src = tmp_path / "ma.xlsx"
+    src.write_bytes(export.build_merger_workbook(acq, tgt, inp, r, merger.breakeven_premium(acq, tgt, inp)))
+    subprocess.run(["soffice", "--headless", "--convert-to", "xlsx", "--outdir", str(tmp_path / "out"), str(src)],
+                   check=True, capture_output=True, timeout=180)
+    ws = load_workbook(tmp_path / "out" / "ma.xlsx", data_only=True)["M&A"]
+    y1, y2 = r["years"]
+    for cell, expected in [("B86", y1["accretion_gaap_pct"]), ("C86", y2["accretion_gaap_pct"]),
+                           ("B88", y1["accretion_cash_pct"]), ("C88", y2["accretion_cash_pct"]),
+                           ("B83", y1["eps_gaap"]), ("C84", y2["eps_cash"]), ("B62", r["ownership"]["buyer"]),
+                           ("B63", r["ownership"]["target"]), ("B96", r["credit"]["debt_to_ebitda"]),
+                           ("B97", r["credit"]["ebitda_to_interest"]), ("B60", r["offer_pe"]),
+                           # money cells are in millions in the sheet; the test inputs are tiny, so scale by 1e-6
+                           ("B89", y1["breakeven_synergies"] / 1e6), ("C90", y2["breakeven_run_rate"] / 1e6),
+                           ("B52", r["sources_uses"]["sources"]["New debt"] / 1e6),
+                           ("B53", r["new_shares"] / 1e6), ("B58", r["ppa"]["annual_amortisation"] / 1e6)]:
+        assert ws[cell].value == pytest.approx(expected, rel=1e-9), cell

@@ -28,6 +28,9 @@ SIMPLIFICATIONS = [
     "Earnings: Yahoo's forward EPS (analyst consensus for the next fiscal year) when available, otherwise "
     "trailing-twelve-month net income with one-offs removed. Year 2 grows each company's earnings with its "
     "DCF Base revenue growth.",
+    "Analyst consensus EPS is usually an adjusted (non-GAAP) figure, which can be well above trailing "
+    "GAAP earnings (when a company has had impairments or one-offs). 'GAAP EPS' in this model therefore means "
+    "after the deal's amortisation, not necessarily GAAP earnings of the two companies.",
     "No calendarisation: if the two companies' fiscal years end in different months, their forward EPS cover "
     "different twelve-month periods.",
     "Purchase price allocation, simplified: a share of the price above the target's book value becomes "
@@ -160,7 +163,7 @@ def run(acq: dict, tgt: dict, inp: dict, synergies_on: bool = True) -> dict:
         "ppa": {"excess_over_book": excess, "intangibles": intangibles, "goodwill": excess - intangibles,
                 "annual_amortisation": amortisation},
         "one_off": {"transaction_fees": fees, "integration_costs": inp["integration_cost_x"] * run_rate},
-        "years": years, "credit": credit,
+        "years": years, "credit": credit, "tax_rate": tax,
     }
     result["warnings"] = warnings(result, acq, tgt)
     return result
@@ -174,6 +177,9 @@ def warnings(r: dict, acq: dict, tgt: dict) -> list:
     if lev > 3:
         out.append(f"Pro forma debt is {lev:.1f}x EBITDA: the borrowing spread would likely be higher at this "
                    "leverage than the rate assumed.")
+    if acq["eps"] <= 0:
+        out.append(f"{acq['ticker']} has zero or negative earnings: the accretion / dilution percentages are not "
+                   "meaningful.")
     if tgt["eps"] <= 0:
         out.append(f"{tgt['ticker']} has zero or negative earnings: it dilutes EPS before synergies at any price.")
     if acq["fiscal_year_end"] != tgt["fiscal_year_end"]:
@@ -187,7 +193,8 @@ def breakeven_premium(acq: dict, tgt: dict, inp: dict, low: float = -0.5, high: 
     NaN if the deal is dilutive even at `low` or still accretive at `high`."""
     def acc(p):
         return run(acq, tgt, {**inp, "premium": p, "offer_price": None})["years"][0]["accretion_gaap"]
-    if acc(low) < 0 or acc(high) > 0:
+    a_low, a_high = acc(low), acc(high)
+    if np.isnan(a_low) or np.isnan(a_high) or a_low < 0 or a_high > 0:
         return np.nan
     for _ in range(80):
         mid = (low + high) / 2
@@ -234,6 +241,78 @@ def explain(qc: dict, inp: dict) -> str:
                    "details decide.")
 
 
+def missing_inputs(acq: dict, tgt: dict, inp: dict) -> list:
+    """Names of the inputs that are missing (NaN): the model then shows N/A instead of guessing."""
+    need = {"buyer price": acq["price"], "buyer shares": acq["shares"], "buyer EPS": acq["eps"],
+            "buyer cash": acq["cash"], "buyer debt": acq["debt"], "buyer tax rate": inp["tax_rate"],
+            "target price": tgt["price"], "target shares": tgt["shares"], "target EPS": tgt["eps"],
+            "target net debt": tgt["net_debt"], "target book equity": tgt["book_equity"],
+            "new debt rate": inp["debt_rate"], "cash interest rate": inp["cash_rate"]}
+    return [k for k, v in need.items() if v is None or pd.isna(v)]
+
+
+def bridge(r: dict, acq: dict, year: int = 1, basis: str = "gaap") -> pd.DataFrame:
+    """Pro forma EPS bridge for one year, per buyer share (what the waterfall chart shows):
+    buyer EPS -> target earnings -> synergies -> interest on new debt -> interest lost on cash
+    (-> target interest saved) (-> amortisation, GAAP only) -> the effect of the new shares -> pro forma EPS.
+    Columns: step, value, kind (total / change). The steps add up to the pro forma EPS."""
+    y = r["years"][year - 1]
+    t = r["tax_rate"]
+    n = acq["shares"]
+    rows = [("Buyer EPS (standalone)", y["standalone_eps"], "total"),
+            ("Target earnings", y["target_ni"] / n, "change"),
+            ("Synergies (after tax)", y["synergies"] * (1 - t) / n, "change"),
+            ("Interest on new debt", -y["new_debt_interest"] * (1 - t) / n, "change"),
+            ("Interest lost on cash", -y["interest_lost_on_cash"] * (1 - t) / n, "change")]
+    if y["target_interest_saved"]:
+        rows.append(("Target interest saved", y["target_interest_saved"] * (1 - t) / n, "change"))
+    ni = y["pro_forma_ni_cash"]
+    if basis == "gaap":
+        rows.append(("Amortisation of intangibles", -y["amortisation"] * (1 - t) / n, "change"))
+        ni = y["pro_forma_ni_gaap"]
+    rows.append(("Effect of new shares", ni / r["pro_forma_shares"] - ni / n, "change"))
+    rows.append(("Pro forma EPS", ni / r["pro_forma_shares"], "total"))
+    return pd.DataFrame(rows, columns=["step", "value", "kind"])
+
+
+def _grid(acq, tgt, inp, rows, cols, make_inputs, basis="gaap") -> pd.DataFrame:
+    out = pd.DataFrame(index=rows, columns=cols, dtype=float)
+    key = "accretion_gaap_pct" if basis == "gaap" else "accretion_cash_pct"
+    for rv in rows:
+        for cv in cols:
+            out.loc[rv, cv] = run(acq, tgt, make_inputs(rv, cv))["years"][0][key]
+    return out
+
+
+def grid_values(base: float, grid: list) -> list:
+    """The grid plus the user's own value, sorted, so the user's case is always in the table."""
+    return sorted({round(x, 6) for x in grid + [base]})
+
+
+def sensitivity_premium_stock(acq: dict, tgt: dict, inp: dict, basis: str = "gaap") -> pd.DataFrame:
+    """Year 1 accretion / dilution %: premium (rows) x share of the price paid in stock (columns)."""
+    premium = (inp["offer_price"] / tgt["price"] - 1) if inp.get("offer_price") else inp["premium"]
+    rows = grid_values(premium, [0.0, 0.1, 0.2, 0.3, 0.4, 0.5])
+    cols = grid_values(inp["stock_pct"], [0.0, 0.25, 0.5, 0.75, 1.0])
+    t = _grid(acq, tgt, inp, rows, cols,
+              lambda p, w: {**inp, "premium": p, "offer_price": None, "stock_pct": w}, basis)
+    t.index.name, t.columns.name = "Premium", "Paid in stock"
+    return t
+
+
+def sensitivity_synergy_premium(acq: dict, tgt: dict, inp: dict, basis: str = "gaap") -> pd.DataFrame:
+    """Year 1 accretion / dilution %: run-rate cost synergies (rows, as % of the target's sales)
+    x premium (columns)."""
+    premium = (inp["offer_price"] / tgt["price"] - 1) if inp.get("offer_price") else inp["premium"]
+    base_pct = inp["cost_synergies"] / tgt["revenue"] if tgt["revenue"] else 0.0
+    rows = grid_values(base_pct, [0.0, 0.005, 0.01, 0.02, 0.03])
+    cols = grid_values(premium, [0.0, 0.1, 0.2, 0.3, 0.4, 0.5])
+    t = _grid(acq, tgt, inp, rows, cols,
+              lambda sp, p: {**inp, "cost_synergies": sp * tgt["revenue"], "premium": p, "offer_price": None}, basis)
+    t.index.name, t.columns.name = "Cost synergies (% of target sales)", "Premium"
+    return t
+
+
 def main():
     import sys
 
@@ -244,6 +323,9 @@ def main():
     if acq["currency"] != tgt["currency"]:
         raise SystemExit("The two companies trade in different currencies; the model does not convert them.")
     inp = default_inputs(acq, tgt, data["risk_free"]["rate"], data["short_rate"]["rate"])
+    gaps = missing_inputs(acq, tgt, inp)
+    if gaps:
+        raise SystemExit(f"Not enough data to run the model (missing: {', '.join(gaps)}); results would be N/A.")
     r = run(acq, tgt, inp)
     bn = lambda x: f"{x / 1e9:,.2f}bn"
     print(f"HYPOTHETICAL, FOR ILLUSTRATION ONLY: {acq['name']} acquires {tgt['name']}")

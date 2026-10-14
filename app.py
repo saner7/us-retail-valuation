@@ -22,6 +22,7 @@ import data_loader as dl
 import dcf
 import export
 import lbo
+import merger
 import peers
 import precedents
 import scenarios
@@ -516,8 +517,8 @@ if stale:
     st.warning(f"Live data unavailable; showing saved data as of {', '.join(dates)} for {', '.join(stale)}. "
                "Yahoo Finance often blocks shared cloud servers for a while: try **Refresh data** later.")
 
-tab_summary, tab_dcf, tab_lbo, tab_sc, tab_comps, tab_prec, tab_data = st.tabs(
-    ["Summary", "DCF", "LBO", "Scenarios", "Comps", "Precedent Transactions", "Data & quality"])
+tab_summary, tab_dcf, tab_lbo, tab_ma, tab_sc, tab_comps, tab_prec, tab_data = st.tabs(
+    ["Summary", "DCF", "LBO", "M&A", "Scenarios", "Comps", "Precedent Transactions", "Data & quality"])
 
 
 # ---------------------------------------------------------------------------
@@ -804,6 +805,285 @@ with tab_lbo:
         st.caption(" · ".join(f"[{d['name']}]({d['source']})" for d in config.LBO_LARGEST_DEALS))
         with st.expander("Simplifications and why the exit is at today's multiple"):
             st.markdown("\n".join(f"- {t}" for t in lbo.SIMPLIFICATIONS))
+
+
+# ---------------------------------------------------------------------------
+# M&A: accretion / dilution of the buyer's EPS
+# ---------------------------------------------------------------------------
+
+MA_MODES = ["Pick from S&P 500", "Enter ticker manually"]
+
+
+def ma_default_target() -> str:
+    """A peer that is already downloaded: the first one smaller than the buyer, else the first peer."""
+    if not PEERS:
+        return ""
+    buyer = peers.find(universe, TARGET) if universe is not None else None
+    if buyer is not None and buyer["market_cap"] > 0:
+        for t in PEERS:
+            p = peers.find(universe, t)
+            if p is not None and 0 < p["market_cap"] < buyer["market_cap"]:
+                return t
+    return PEERS[0]
+
+
+def ma_num(key: str) -> float:
+    v = st.session_state.get(key)
+    return float("nan") if v is None else float(v)
+
+
+def ma_pct(key: str) -> float:
+    return ma_num(key) / 100
+
+
+def ma_reset(defaults: dict):
+    for k, v in defaults.items():
+        st.session_state[k] = v
+
+
+with tab_ma:
+    st.warning("**Hypothetical transaction, for illustration only.** The result is neither a recommendation nor a "
+               "forecast; the deal terms are illustrative assumptions you can edit.")
+    st.markdown(
+        "**Would buying another company raise or lower the buyer's earnings per share (EPS)?** If EPS goes up the deal "
+        "is *accretive*, if it goes down it is *dilutive*. Paying in shares adds shares; paying in cash costs "
+        "interest (or the interest the cash was earning); the target's earnings and the *synergies* (savings the "
+        "merger creates) have to make up for that.")
+
+    # --- who buys whom -----------------------------------------------------------------
+    if st.session_state.get("ma_buyer") != TARGET:        # a new buyer: start from its default target
+        st.session_state["ma_buyer"] = TARGET
+        default = ma_default_target()
+        in_list = universe is not None and default in LABELS
+        st.session_state["ma_mode"] = MA_MODES[0] if in_list else MA_MODES[1]
+        if in_list:
+            st.session_state["ma_target_sp"] = default
+        st.session_state["ma_target_text"] = default
+    modes = MA_MODES if universe is not None else MA_MODES[1:]
+    c1, c2 = st.columns([1, 2])
+    c1.markdown(f"**Buyer:** {NAME} ({TARGET})")
+    mode = c1.radio("Company to acquire", modes, key="ma_mode")
+    if mode == MA_MODES[0]:
+        c2.selectbox("Company to acquire (type to search)", list(LABELS), key="ma_target_sp", format_func=LABELS.get)
+        ma_target = st.session_state["ma_target_sp"]
+    else:
+        c2.text_input("Ticker (Yahoo Finance symbol)", key="ma_target_text")
+        ma_target = st.session_state["ma_target_text"].strip().upper()
+
+    tdata = None
+    if not ma_target:
+        st.info("Choose the company to acquire.")
+    elif ma_target == TARGET:
+        st.info(f"The buyer is {TARGET}: choose a different company to acquire.")
+    elif ma_target in companies:
+        tdata = data
+    else:
+        tdata = load_data((ma_target,), 0, False)
+        if tdata["errors"]:
+            load_data.clear((ma_target,), 0, False)       # a failed download is not kept
+            st.error(f"Could not load {ma_target}. {tdata['errors'][ma_target]}")
+            tdata = None
+
+    if tdata is not None:
+        ma_data = {"companies": {TARGET: companies[TARGET], ma_target: tdata["companies"][ma_target]},
+                   "risk_free": data["risk_free"], "short_rate": data.get("short_rate", {})}
+        try:
+            acq, tgt = merger.pair_inputs(ma_data, TARGET, ma_target)
+        except Exception as e:
+            st.error(f"The merger model could not use the data of {ma_target} ({str(e)[:150]}).")
+            acq = tgt = None
+        if acq is not None and acq["currency"] != tgt["currency"]:
+            st.error(f"{TARGET} trades in {acq['currency']} and {ma_target} in {tgt['currency']}; the model does not "
+                     "convert currencies. Choose a company that trades in the same currency.")
+            acq = tgt = None
+
+    if tdata is not None and acq is not None:
+        base = merger.default_inputs(acq, tgt, choices["risk_free"], data.get("short_rate", {}).get("rate", float("nan")))
+        defaults = {
+            "ma_price_mode": "Premium", "ma_premium": 25.0, "ma_offer_price": round(tgt["price"] * 1.25, 2),
+            "ma_stock": 50.0, "ma_debt_rate": None if _missing(base["debt_rate"]) else base["debt_rate"] * 100,
+            "ma_cash_rate": None if _missing(base["cash_rate"]) else base["cash_rate"] * 100,
+            "ma_refi": False, "ma_cost_syn": 1.0, "ma_rev_syn": 0.0, "ma_phase1": 50.0, "ma_phase2": 100.0,
+            "ma_integ": 1.0, "ma_fee": base["fee_pct"] * 100, "ma_intang": 30.0, "ma_amort": 10,
+            "ma_mincash": base["min_cash_pct"] * 100,
+            "ma_tax": None if _missing(base["tax_rate"]) else base["tax_rate"] * 100}
+        if st.session_state.get("ma_for") != (TARGET, ma_target):
+            ma_reset(defaults)
+            st.session_state["ma_for"] = (TARGET, ma_target)
+        for k, v in defaults.items():
+            st.session_state.setdefault(k, v)
+
+        st.caption(f"{acq['ticker']}: {acq['eps_source']}, fiscal year ends {acq['fiscal_year_end']}. "
+                   f"{tgt['ticker']}: {tgt['eps_source']}, fiscal year ends {tgt['fiscal_year_end']}. Year 2 grows "
+                   "each company's earnings at its DCF Base revenue growth.")
+
+        # --- assumptions -------------------------------------------------------------
+        st.subheader("Deal assumptions")
+        a = st.columns(4)
+        a[0].radio("Offer set by", ["Premium", "Offer price"], key="ma_price_mode", horizontal=True)
+        if st.session_state["ma_price_mode"] == "Premium":
+            a[1].number_input("Premium over the target's price (%)", key="ma_premium", step=1.0, format="%.1f",
+                              help="Illustrative assumption.")
+        else:
+            a[1].number_input(f"Offer price per share ({CCY})", key="ma_offer_price", step=1.0, format="%.2f")
+        a[2].number_input("Paid in stock (%)", key="ma_stock", step=5.0, format="%.0f",
+                          help="The rest is cash: the buyer's spare cash (above its minimum cash) first, then new debt.")
+        a[3].checkbox("Refinance the target's debt", key="ma_refi",
+                      help="Off: the target's debt is assumed and its interest stays in its earnings. On: the debt is "
+                           "repaid with new debt at the new rate.")
+        b = st.columns(4)
+        b[0].number_input("Interest rate on new debt (%)", key="ma_debt_rate", step=0.05, format="%.2f",
+                          help="Illustrative assumption: 10-year Treasury + the credit spread used in the WACC.")
+        b[1].number_input("Interest earned on cash (%)", key="ma_cash_rate", step=0.05, format="%.2f",
+                          help="13-week T-bill (^IRX), what the cash used would have earned.")
+        b[2].number_input("Buyer tax rate (%)", key="ma_tax", step=0.5, format="%.1f",
+                          help="The buyer's DCF tax rate (average of the last 3 fiscal years).")
+        b[3].number_input("Transaction fees (% of target EV)", key="ma_fee", step=0.1, format="%.2f",
+                          help="Illustrative assumption; one-off, not in the adjusted EPS.")
+        s = st.columns(4)
+        s[0].number_input("Cost synergies (% of target sales, run rate)", key="ma_cost_syn", step=0.1, format="%.2f",
+                          help="Illustrative assumption.")
+        s[1].number_input(f"Revenue synergies ({CCY}m of profit)", key="ma_rev_syn", step=10.0, format="%.0f",
+                          help="Pre-tax profit contribution at the run rate; default 0.")
+        s[2].number_input("Synergies realised, Year 1 (%)", key="ma_phase1", step=5.0, format="%.0f",
+                          help="Illustrative assumption.")
+        s[3].number_input("Synergies realised, Year 2 (%)", key="ma_phase2", step=5.0, format="%.0f")
+        p = st.columns(4)
+        p[0].number_input("Intangibles (% of the price above book value)", key="ma_intang", step=5.0, format="%.0f",
+                          help="Illustrative: the part of the price paid above the target's book value that is "
+                               "assigned to amortisable intangibles (brands, customer relationships). The rest is "
+                               "goodwill, which is not amortised.")
+        p[1].number_input("Amortisation period (years)", key="ma_amort", min_value=1, step=1, format="%d")
+        p[2].number_input("Integration cost (x run-rate synergies)", key="ma_integ", step=0.5, format="%.1f",
+                          help="Illustrative assumption; one-off, not in the adjusted EPS.")
+        p[3].number_input("Minimum cash kept (% of buyer sales)", key="ma_mincash", step=0.5, format="%.1f")
+        p[3].button("Reset M&A inputs", on_click=ma_reset, args=(defaults,))
+
+        inp = {"premium": ma_pct("ma_premium"),
+               "offer_price": ma_num("ma_offer_price") if st.session_state["ma_price_mode"] == "Offer price" else None,
+               "stock_pct": ma_pct("ma_stock"), "debt_rate": ma_pct("ma_debt_rate"),
+               "cash_rate": ma_pct("ma_cash_rate"), "refinance_target_debt": bool(st.session_state["ma_refi"]),
+               "cost_synergies": ma_pct("ma_cost_syn") * tgt["revenue"],
+               "revenue_synergies": (ma_num("ma_rev_syn") if not _missing(ma_num("ma_rev_syn")) else 0.0) * 1e6,
+               "phase_in": (ma_pct("ma_phase1"), ma_pct("ma_phase2")),
+               "integration_cost_x": ma_num("ma_integ"), "fee_pct": ma_pct("ma_fee"),
+               "intangibles_pct": ma_pct("ma_intang"), "amortisation_years": int(st.session_state["ma_amort"] or 1),
+               "min_cash_pct": ma_pct("ma_mincash"), "tax_rate": ma_pct("ma_tax")}
+        gaps = merger.missing_inputs(acq, tgt, inp)
+        gaps += [k for k, v in [("premium", inp["premium"] if inp["offer_price"] is None else 0),
+                                ("stock share", inp["stock_pct"]), ("synergies", inp["cost_synergies"]),
+                                ("synergy phase-in", inp["phase_in"][0] + inp["phase_in"][1]),
+                                ("fees", inp["fee_pct"]), ("integration cost", inp["integration_cost_x"]),
+                                ("intangibles share", inp["intangibles_pct"]),
+                                ("minimum cash", inp["min_cash_pct"])] if _missing(v)]
+        if gaps:
+            st.info("Not enough data to run the merger model, so the results are N/A. Missing or empty: "
+                    + ", ".join(gaps) + ". Enter the value (rates can be typed in the boxes above) or choose "
+                    "another company.")
+        else:
+            r = merger.run(acq, tgt, inp)
+            be_premium = merger.breakeven_premium(acq, tgt, inp)
+            y1, y2 = r["years"]
+            sym_cur = lambda x: cur(x).replace("$", "\\$")      # a bare "$" would start a formula
+            sgn = lambda x: "N/A" if _missing(x) else f"{x:+.1%}"
+
+            m = st.columns(5)
+            m[0].metric("GAAP EPS, Year 1", sgn(y1["accretion_gaap_pct"]),
+                        f"{sym_cur(y1['eps_gaap'])} vs {sym_cur(y1['standalone_eps'])} standalone",
+                        delta_color="off", delta_arrow="off", help="Change in the buyer's EPS, after amortisation.")
+            m[1].metric("Cash EPS, Year 1", sgn(y1["accretion_cash_pct"]),
+                        f"{sym_cur(y1['eps_cash'])} vs {sym_cur(y1['standalone_eps'])} standalone",
+                        delta_color="off", delta_arrow="off", help="Change in the buyer's EPS, before amortisation.")
+            if y1["breakeven_run_rate"] <= 0:       # already accretive without any synergies
+                m[2].metric("Breakeven synergies", "None needed", f"{bn(-y1['breakeven_run_rate'])} of cushion",
+                            delta_color="off", delta_arrow="off",
+                            help="Year 1 GAAP EPS is already above standalone before synergies; the cushion is the "
+                                 "yearly (run-rate) saving that could be given up.")
+            else:
+                m[2].metric("Breakeven synergies", bn(y1["breakeven_run_rate"]),
+                            f"run rate; {bn(y1['breakeven_synergies'])} in Year 1", delta_color="off",
+                            delta_arrow="off", help="Yearly cost savings that would leave Year 1 GAAP EPS unchanged.")
+            m[3].metric("Breakeven premium", "None" if _missing(be_premium) else pct(be_premium),
+                        f"offer {pct(r['premium'])}", delta_color="off", delta_arrow="off",
+                        help="The highest premium at which Year 1 GAAP EPS, synergies included, is unchanged.")
+            m[4].metric("Ownership", f"{r['ownership']['buyer']:.0%} / {r['ownership']['target']:.0%}",
+                        "buyer / target", delta_color="off", delta_arrow="off",
+                        help=f"{r['new_shares'] / 1e6:,.1f}m new buyer shares are issued.")
+            for w in r["warnings"]:
+                st.warning(w)
+
+            # --- GAAP and cash EPS side by side ------------------------------------------
+            st.subheader("EPS: GAAP and cash")
+            eps_table = pd.DataFrame(
+                [{"Standalone EPS": cur(y["standalone_eps"]), "GAAP EPS": cur(y["eps_gaap"]),
+                  "GAAP vs standalone": sgn(y["accretion_gaap_pct"]), "Cash EPS": cur(y["eps_cash"]),
+                  "Cash vs standalone": sgn(y["accretion_cash_pct"])} for y in (y1, y2)],
+                index=["Year 1", "Year 2"])
+            st.dataframe(eps_table, width="stretch")
+            st.caption(
+                "**GAAP EPS** is after the amortisation of the intangible assets acquired in the deal; **cash EPS** "
+                "leaves that amortisation out. The gap between them comes entirely from that amortisation "
+                f"({bn(r['ppa']['annual_amortisation'])} a year before tax here). Companies usually put the adjusted "
+                "EPS, which excludes it, at the front of their acquisition announcements. So when a deal is called "
+                "'accretive', check which EPS definition is meant: it can be accretive on cash EPS and dilutive on "
+                "GAAP EPS. One-off transaction fees and integration costs are in neither EPS: "
+                f"{bn(r['one_off']['transaction_fees'])} and {bn(r['one_off']['integration_costs'])}.")
+
+            # --- sources and uses, purchase price allocation ---------------------------------
+            st.subheader(f"Sources and uses ({CCY})")
+            u, so = r["sources_uses"]["uses"], r["sources_uses"]["sources"]
+            c1, c2, c3 = st.columns(3)
+            c1.dataframe(pd.DataFrame({"Amount": [bn(v) for v in u.values()] + [bn(sum(u.values()))]},
+                                      index=["Purchase of target equity", "Transaction fees", "Refinance target debt",
+                                             "Total uses"]), width="stretch")
+            c2.dataframe(pd.DataFrame({"Amount": [bn(v) for v in so.values()] + [bn(sum(so.values()))]},
+                                      index=["New buyer shares", "Buyer's excess cash", "New debt", "Total sources"]),
+                         width="stretch")
+            ppa = r["ppa"]
+            c3.dataframe(pd.DataFrame({"Amount": [bn(ppa["excess_over_book"]), bn(ppa["intangibles"]),
+                                                  bn(ppa["goodwill"]), bn(ppa["annual_amortisation"])]},
+                                      index=["Price above book value", "Amortisable intangibles", "Goodwill (not amortised)",
+                                             "Amortisation per year"]), width="stretch")
+            st.caption(f"Offer {cur(r['offer_price'])} per share ({pct(r['premium'])} premium), equity {bn(r['equity_value'])}, "
+                       f"offer P/E {mult(r['offer_pe'])}. The purchase price allocation is simplified: the price above "
+                       "the target's book value is split into intangibles (amortised) and goodwill (not amortised).")
+
+            # --- EPS bridge (waterfall) --------------------------------------------------
+            st.subheader("EPS bridge")
+            w1, w2 = st.columns(2)
+            basis_label = w1.radio("EPS definition", ["GAAP EPS", "Cash EPS"], key="ma_basis", horizontal=True)
+            year = 1 if w2.radio("Year", ["Year 1", "Year 2"], key="ma_year", horizontal=True) == "Year 1" else 2
+            basis = "gaap" if basis_label == "GAAP EPS" else "cash"
+            st.plotly_chart(
+                charts.eps_waterfall(merger.bridge(r, acq, year, basis),
+                                     f"{TARGET} Year {year} EPS bridge, {basis_label}: from standalone to pro forma "
+                                     f"(hypothetical deal for {ma_target})", CCY), width="stretch")
+
+            # --- quick check ---------------------------------------------------------------
+            st.subheader("Quick check")
+            st.markdown(merger.explain(merger.quick_check(acq, tgt, inp, r), inp).replace("$", "\\$"))
+
+            # --- sensitivities ---------------------------------------------------------------
+            st.subheader(f"Sensitivity: Year 1 EPS vs standalone ({basis_label})")
+            h1, h2 = st.columns(2)
+            t1 = merger.sensitivity_premium_stock(acq, tgt, inp, basis)
+            h1.plotly_chart(charts.accretion_heatmap(t1, "Premium x share paid in stock", (r["premium"], inp["stock_pct"])),
+                            width="stretch")
+            t2 = merger.sensitivity_synergy_premium(acq, tgt, inp, basis)
+            h2.plotly_chart(charts.accretion_heatmap(
+                t2, "Cost synergies x premium", (inp["cost_synergies"] / tgt["revenue"], r["premium"]),
+                row_fmt=lambda x: f"{x:.1%}"), width="stretch")
+
+            # --- pro forma credit, downloads, simplifications --------------------------------
+            cr = r["credit"]
+            st.caption(f"Pro forma credit (Year 1): debt {bn(cr['debt'])}, debt / EBITDA {mult(cr['debt_to_ebitda'])}, "
+                       f"EBITDA / interest {mult(cr['ebitda_to_interest'])}.")
+            st.download_button("Download M&A Excel (live formulas)", type="primary",
+                               data=export.build_merger_workbook(acq, tgt, inp, r, be_premium, CCY),
+                               file_name=f"{TARGET}_{ma_target}_merger.xlsx",
+                               mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+            with st.expander("Simplifications"):
+                st.markdown("\n".join(f"- {t}" for t in merger.SIMPLIFICATIONS))
 
 
 # ---------------------------------------------------------------------------
