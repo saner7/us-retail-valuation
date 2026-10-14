@@ -165,6 +165,7 @@ def fetch_from_yahoo(ticker: str) -> dict:
         "sector": info.get("sector"),
         "industry": info.get("industry"),
         "country": info.get("country"),
+        "forward_eps": info.get("forwardEps"),   # analyst consensus for the next fiscal year (Yahoo)
     }
 
     statements = {}

@@ -11,8 +11,11 @@ the end and listed.
 """
 
 import argparse
+import json
 import shutil
 import time
+
+import yfinance as yf
 
 import config
 import data_loader as dl
@@ -47,6 +50,28 @@ def save_rates() -> None:
             shutil.copy2(config.CACHE_DIR / name, config.SNAPSHOT_DIR / name)
 
 
+def add_forward_eps(tickers: list, pause: float) -> None:
+    """Add meta["forward_eps"] to saved snapshots without touching their prices or statements."""
+    missing = []
+    for t in tickers:
+        path = config.SNAPSHOT_DIR / f"{t}_snapshot.json"
+        if not path.exists():
+            continue
+        try:
+            eps = yf.Ticker(t).info.get("forwardEps")
+        except Exception:
+            eps = None
+        with open(path) as f:
+            data = json.load(f)
+        data["meta"]["forward_eps"] = eps if isinstance(eps, (int, float)) else None
+        if data["meta"]["forward_eps"] is None:
+            missing.append(t)
+        with open(path, "w") as f:
+            json.dump(data, f)
+        time.sleep(pause)
+    print(f"forwardEps added; not available for: {' '.join(missing) or 'none'}")
+
+
 def snapshot_size() -> str:
     files = list(config.SNAPSHOT_DIR.glob("*"))
     return f"{len(files)} files, {sum(f.stat().st_size for f in files) / 1e6:.1f} MB"
@@ -58,6 +83,8 @@ def main():
     parser.add_argument("--all", action="store_true", help="every S&P 500 company plus the default set")
     parser.add_argument("--missing-only", action="store_true", help="skip companies that already have a snapshot")
     parser.add_argument("--pause", type=float, default=1.0, help="seconds between companies")
+    parser.add_argument("--add-forward-eps", action="store_true",
+                        help="only add Yahoo's forwardEps to the saved company info; prices and statements unchanged")
     args = parser.parse_args()
 
     tickers = [t.upper() for t in args.tickers]
@@ -66,6 +93,9 @@ def main():
     if args.missing_only:
         have = set(dl.snapshot_tickers())
         tickers = [t for t in tickers if t not in have]
+    if args.add_forward_eps:
+        add_forward_eps(tickers if args.tickers else dl.snapshot_tickers(), args.pause)
+        return
     print(f"Saving {len(tickers)} companies to {config.SNAPSHOT_DIR}")
     failed = run(tickers, args.pause)
     if failed:

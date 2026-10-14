@@ -3,6 +3,8 @@ the same figures."""
 
 from __future__ import annotations
 
+import textwrap
+
 import pandas as pd
 import plotly.graph_objects as go
 
@@ -105,6 +107,64 @@ def irr_heatmap(table: pd.DataFrame, target_irr: float, title: str, highlight=No
         plot_bgcolor=SURFACE, paper_bgcolor=SURFACE, font=FONT,
         margin={"l": 70, "r": 20, "t": 80, "b": 60}, height=420,
     )
+    return fig
+
+
+TOTAL_GRAY = "#898781"
+
+
+def eps_waterfall(bridge: pd.DataFrame, title: str, currency: str = "USD") -> go.Figure:
+    """EPS bridge from merger.bridge(): totals gray, increases blue, decreases red
+    (the same blue / red as the sensitivity heatmaps), with the value on every bar."""
+    sym = config.currency_symbol(currency)
+    measure = ["absolute" if k == "total" else "relative" for k in bridge["kind"]]
+    measure[-1] = "total"
+    steps = ["<br>".join(textwrap.wrap(t, 14)) for t in bridge["step"]]      # wrapped, so labels do not overlap
+    fig = go.Figure(go.Waterfall(
+        x=steps, y=bridge["value"], measure=measure,
+        text=[f"{sym}{v:,.2f}" if k == "total" else f"{'+' if v >= 0 else '-'}{sym}{abs(v):,.2f}"
+              for v, k in zip(bridge["value"], bridge["kind"])],
+        textposition="outside", textfont={"size": 12, "color": INK}, cliponaxis=False,
+        increasing={"marker": {"color": ABOVE}}, decreasing={"marker": {"color": BELOW}},
+        totals={"marker": {"color": TOTAL_GRAY}}, connector={"line": {"color": GRID, "width": 1}},
+        hovertemplate="%{x}<br>%{y:+,.3f}<extra></extra>"))
+    # a bar axis that starts at zero would hide the small changes: zoom on the range that matters
+    running = bridge["value"].where(bridge["kind"] == "change", 0).cumsum() + bridge["value"].iloc[0]
+    lo = min(bridge["value"].iloc[0], bridge["value"].iloc[-1], running.min())
+    hi = max(bridge["value"].iloc[0], bridge["value"].iloc[-1], running.max())
+    pad = max((hi - lo) * 0.25, abs(hi) * 0.02)
+    fig.update_layout(
+        title={"text": title, "x": 0}, showlegend=False, plot_bgcolor=SURFACE, paper_bgcolor=SURFACE, font=FONT,
+        yaxis={"title": f"EPS ({currency})", "tickprefix": sym, "range": [lo - pad, hi + pad], "gridcolor": GRID,
+               "zeroline": False, "tickfont": {"color": MUTED}},
+        xaxis={"tickfont": {"color": INK, "size": 11}, "tickangle": 0},
+        margin={"l": 70, "r": 20, "t": 70, "b": 100}, height=450)
+    return fig
+
+
+def accretion_heatmap(table: pd.DataFrame, title: str, highlight: tuple = None,
+                      row_fmt=lambda x: f"{x:.0%}", col_fmt=lambda x: f"{x:.0%}") -> go.Figure:
+    """Year 1 accretion / dilution % for two deal inputs. Diverging around 0:
+    red = dilutive, blue = accretive, gray = no change. `highlight` = (row value, column value)."""
+    z = table.values.astype(float)
+    bound = max(abs(z[~pd.isna(z)]).max(), 0.01) if (~pd.isna(z)).any() else 0.01
+    fig = go.Figure(go.Heatmap(
+        z=z, x=[col_fmt(c) for c in table.columns], y=[row_fmt(r) for r in table.index],
+        colorscale=[[0, BELOW], [0.5, NEUTRAL], [1, ABOVE]], zmid=0, zmin=-bound, zmax=bound,
+        texttemplate="%{z:+.1%}", textfont={"color": INK, "size": 12 if table.shape[1] <= 5 else 10},
+        xgap=2, ygap=2, colorbar={"title": {"text": "EPS vs standalone", "side": "right"}, "tickformat": "+.0%"},
+        hovertemplate=(f"{table.index.name} %{{y}}<br>{table.columns.name} %{{x}}"
+                       "<br>Year 1 EPS %{z:+.1%}<extra></extra>")))
+    if highlight is not None:
+        i = min(range(len(table.columns)), key=lambda k: abs(table.columns[k] - highlight[1]))
+        j = min(range(len(table.index)), key=lambda k: abs(table.index[k] - highlight[0]))
+        fig.add_shape(type="rect", x0=i - 0.5, x1=i + 0.5, y0=j - 0.5, y1=j + 0.5, line={"color": INK, "width": 2})
+    fig.update_layout(
+        title={"text": f"{title}<br><sup>Red: dilutive, blue: accretive. Your case outlined.</sup>", "x": 0},
+        xaxis={"title": table.columns.name, "tickfont": {"color": MUTED}, "type": "category"},
+        yaxis={"title": table.index.name, "autorange": "reversed", "tickfont": {"color": MUTED}, "type": "category"},
+        plot_bgcolor=SURFACE, paper_bgcolor=SURFACE, font=FONT,
+        margin={"l": 70, "r": 20, "t": 80, "b": 60}, height=420)
     return fig
 
 
