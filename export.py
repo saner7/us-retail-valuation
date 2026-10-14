@@ -1016,22 +1016,28 @@ def _merger_sheet(wb, acq: dict, tgt: dict, inp: dict, result: dict, ccy: str, b
             _put(ws, r, 2, value, fmt, font=INPUT, fill=INPUT_FILL)
         _put(ws, r, 3, note, font=NOTE)
 
+    # optional direct inputs (0 = not used), e.g. a real deal's financing and purchase accounting
+    _put(ws, 26, 5, "Set directly (0 = not used)", bold=True)
+    for r_, label, key in ((27, "New debt (m)", "new_debt"), (28, "Annual amortisation (m)", "amortisation_per_year"),
+                           (29, "Transaction fees (m)", "fees_amount")):
+        _put(ws, r_, 5, label)
+        _put(ws, r_, 6, (inp.get(key) or 0) / M, FMT_MONEY, font=INPUT, fill=INPUT_FILL)
     calc = [   # row, label, formula, format
         (44, "Offer price per share", "=IF(B27>0,B27,B15*(1+B26))", price_fmt),
         (45, "Equity purchase price", "=B44*B16", FMT_MONEY),
-        (46, "Transaction fees", "=B37*(B45+B21)", FMT_MONEY),
+        (46, "Transaction fees", "=IF(F29>0,F29,B37*(B45+B21))", FMT_MONEY),
         (47, "Target debt refinanced", "=IF(B31=1,B20,0)", FMT_MONEY),
         (48, "Paid in new buyer shares", "=B28*B45", FMT_MONEY),
         (49, "Cash needed (rest of the price + fees + refinancing)", "=B45-B48+B46+B47", FMT_MONEY),
         (50, "Buyer's spare cash", "=MAX(B10-B40*B9,0)", FMT_MONEY),
-        (51, "Cash used", "=MIN(B50,B49)", FMT_MONEY),
-        (52, "New debt", "=B49-B51", FMT_MONEY),
+        (51, "Cash used", "=IF(F27>0,B49-MIN(F27,B49),MIN(B50,B49))", FMT_MONEY),
+        (52, "New debt", "=IF(F27>0,MIN(F27,B49),B49-B51)", FMT_MONEY),
         (53, "New buyer shares (m)", "=B48/B5", FMT_NUM2),
         (54, "Pro forma shares (m)", "=B6+B53", FMT_NUM2),
         (55, "Excess of the price over book equity", "=MAX(B45-B22,0)", FMT_MONEY),
         (56, "Amortisable intangibles", "=B38*B55", FMT_MONEY),
         (57, "Goodwill (not amortised)", "=B55-B56", FMT_MONEY),
-        (58, "Annual amortisation (pre-tax)", "=B56/B39", FMT_MONEY),
+        (58, "Annual amortisation (pre-tax)", "=IF(F28>0,F28,B56/B39)", FMT_MONEY),
         (59, "Run-rate synergies", "=B32+B33", FMT_MONEY),
         (60, "Offer P/E", "=B44/B17", FMT_MULT),
         (61, "Premium paid", "=B44/B15-1", FMT_PCT),
@@ -1054,12 +1060,12 @@ def _merger_sheet(wb, acq: dict, tgt: dict, inp: dict, result: dict, ccy: str, b
         71: "Buyer net income", 72: "Target net income", 73: "Synergies realised (pre-tax)",
         74: "Interest on new debt (pre-tax)", 75: "Interest lost on cash (pre-tax)",
         76: "Target interest saved (pre-tax)", 77: "Net income before synergies and amortisation",
-        78: "Pro forma net income, cash basis (amortisation excluded)", 79: "Amortisation (pre-tax)",
-        80: "Pro forma net income, GAAP (after amortisation)", 81: "Pro forma shares (m)",
-        82: "Buyer EPS, standalone", 83: "Pro forma EPS, GAAP", 84: "Pro forma EPS, cash",
-        85: "Accretion / (dilution), GAAP", 86: "Accretion / (dilution) %, GAAP",
-        87: "Accretion / (dilution), cash", 88: "Accretion / (dilution) %, cash",
-        89: "Breakeven synergies (realised in the year, GAAP EPS unchanged)",
+        78: "Pro forma net income excl. deal amortization (cash basis)", 79: "Amortisation (pre-tax)",
+        80: "Pro forma net income incl. deal amortization", 81: "Pro forma shares (m)",
+        82: "Buyer EPS, standalone", 83: "Pro forma EPS incl. deal amortization", 84: "Pro forma EPS excl. deal amortization (cash EPS)",
+        85: "Accretion / (dilution), EPS incl. deal amortization", 86: "Accretion / (dilution) %, EPS incl. deal amortization",
+        87: "Accretion / (dilution), EPS excl. deal amortization", 88: "Accretion / (dilution) %, EPS excl. deal amortization",
+        89: "Breakeven synergies (realised in the year, EPS incl. deal amortization unchanged)",
         90: "Breakeven run-rate synergies"}
     for r, label in labels.items():
         _put(ws, r, 1, label, bold=r in (83, 84, 86, 88))
@@ -1090,6 +1096,7 @@ def _merger_sheet(wb, acq: dict, tgt: dict, inp: dict, result: dict, ccy: str, b
     for r, label, f, fmt in credit:
         _put(ws, r, 1, label); _put(ws, r, 2, f, fmt)
     _put(ws, 98, 1, "Warning: above 3x the borrowing spread would likely be higher; above 4x a heavy load.", font=NOTE)
+    _put(ws, 99, 1, merger.EPS_NOTE, font=NOTE)
     _put(ws, 100, 1, "Breakeven premium (Year 1, synergies included)")
     _put(ws, 100, 2, None if pd.isna(breakeven_premium) else breakeven_premium, FMT_PCT)
     _put(ws, 100, 3, "Value at export (calculated in Python): the share count changes with the premium, so Excel needs "

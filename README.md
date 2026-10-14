@@ -2,7 +2,7 @@
 
 **Live app:** [tgt-valuation.streamlit.app](https://tgt-valuation.streamlit.app/)
 
-_Interactive valuation of Target (NYSE: TGT) using comparable companies, precedent transactions, an LBO analysis and a DCF with Bear / Base / Bull scenarios, with a football field summary and a linked Excel model. Built as a learning project by an IB Diploma student interested in investment banking._
+_Interactive valuation of Target (NYSE: TGT) using comparable companies, precedent transactions, an LBO analysis and a DCF with Bear / Base / Bull scenarios, with a football field summary and a linked Excel model, plus a merger model (accretion / dilution of EPS). Built as a learning project by an IB Diploma student interested in investment banking._
 
 ---
 
@@ -11,6 +11,7 @@ Kroger (KR), Dollar General (DG) and BJ's Wholesale Club (BJ)**.
 It combines a trading-comparables analysis, precedent transactions (what acquirers paid for
 similar US retailers), a leveraged buyout (LBO) analysis (what a private equity fund could pay)
 and a discounted cash flow (DCF) model with Bear / Base / Bull scenarios, and summarises them in a "football field" chart, the way an investment banking pitch book would.
+A merger model asks whether buying another company would raise or lower the buyer's EPS.
 Any other company can be analysed: pick it from the S&P 500 (the app suggests an editable peer
 group) or type any Yahoo Finance ticker and its peers.
 
@@ -33,6 +34,7 @@ group) or type any Yahoo Finance ticker and its peers.
 | C | Precedent transactions (EV/EBITDA) with SEC sources | Done |
 | L | LBO analysis: sources & uses, debt schedule, IRR / MOIC, maximum price, Excel sheet | Done |
 | S | Pick from the S&P 500 with a suggested, editable peer group (GICS, size, curated groups) | Done |
+| M | M&A: accretion / dilution of the buyer's EPS, with a real deal (Dick's / Foot Locker) from SEC filings | Done |
 
 ## Methodology
 
@@ -260,6 +262,119 @@ a 9.7x exit): leverage only helps when the business returns more than the debt c
 at 11.8x and selling at 9.7x does not. At the lower maximum price it does, which is why 6x
 debt raises that price.
 
+### M&A: accretion / dilution (Stage M)
+**Question:** if company A bought company B, would A's earnings per share (EPS) go up (*accretive*) or
+down (*dilutive*), and what decides it? Paying in shares adds shares; paying in cash costs interest
+(or the interest the cash was earning); B's earnings and the *synergies* (savings the merger creates)
+have to make up for that. Code: `merger.py`; app: M&A tab; Excel: a separate workbook (see below).
+
+- **Deal inputs** (all editable; the ones with no source are labelled illustrative in the app): offer
+  as a premium over the target's price (default 25%) or a price per share; the share of the price
+  paid in new buyer shares (default 50%; the buyer issues them at its current price); the cash part
+  comes first from the buyer's spare cash (above 2% of its sales) and then from new debt at the
+  10-year Treasury plus the WACC credit spread; the interest lost on cash used is the 13-week T-bill
+  (`^IRX`); the target's debt is assumed (or refinanced); run-rate cost synergies (default 1% of the
+  target's sales, 50% realised in Year 1, 100% in Year 2); one-time integration costs (1x the synergies)
+  and transaction fees (1.5% of the target's enterprise value), which are reported but kept out of the
+  adjusted EPS; and a simplified purchase price allocation: 30% of the price paid above the
+  target's book value goes to amortisable intangibles (10 years), the rest is goodwill, which is not amortized.
+- **Earnings**: Year 1 uses Yahoo's forward EPS (analyst consensus for the next fiscal year) when both
+  companies have it, otherwise both use trailing-twelve-month net income with one-offs removed, so the
+  two sit on the same basis. Year 2 grows each company's earnings at its DCF Base revenue growth. The
+  app always shows which basis was used and both fiscal year ends (no calendarisation).
+- **Result, Years 1 and 2:** pro forma net income = buyer + target + after-tax synergies - after-tax
+  interest on new debt - after-tax interest lost on cash (+ the target's interest if its debt is
+  refinanced) - after-tax amortization; pro forma EPS = that / (buyer shares + new shares).
+- **Two EPS definitions, side by side:** *EPS incl. deal amortization* and *EPS excl. deal amortization
+  (cash EPS)*. The gap is entirely the amortization of the acquired intangibles. Companies usually put the
+  adjusted EPS, which leaves that amortization out, at the front of their announcements, so a deal called
+  "accretive" can be dilutive with the amortization: always check which definition is meant. A note
+  explains that Yahoo's forward EPS is usually an adjusted (non-GAAP) figure, so the "incl." line is
+  *not* reported GAAP earnings but that EPS after the deal's amortization.
+- **Also shown:** breakeven synergies (the yearly savings that leave EPS incl. amortization unchanged;
+  "none needed" when the deal is accretive without them), the breakeven premium (the highest premium that
+  does the same, by bisection), the shareholders' ownership shares, sources and uses, the purchase price
+  allocation, an EPS bridge as a waterfall chart (switchable between the two EPS definitions and the two
+  years), pro forma debt / EBITDA and EBITDA / interest (warnings above 3x: "the borrowing spread would
+  likely be higher at this leverage", and above 4x), and two sensitivity tables (premium x share paid in
+  stock; synergies x premium). When data is missing (for example a target without a lease line), the
+  results show N/A and say which input is missing.
+- **Quick check** (rules of thumb): all stock, the deal is generally accretive if the buyer's P/E is
+  above the offer P/E; all cash, if the target's earnings yield (E/P at the offer) is above the after-tax
+  cost of the cash or debt. For a mix the app weights the two costs and says whether the model's
+  result without synergies agrees.
+- **Simplifications** (also listed in the app): consensus EPS is not calendarised; the purchase price
+  allocation has no deferred taxes or fair-value step-ups of other assets; rates are flat and the debt is
+  not repaid in Years 1-2; revenue synergies are entered as profit; shares are issued at the buyer's
+  current price with no collar or announcement effect.
+- **Excel:** the M&A tab has its own download (a workbook with one "M&A" sheet, live formulas, checked
+  against Python with LibreOffice). It is separate from the main workbook because the main download is
+  built before the M&A tab knows which company is the target. The breakeven premium is a value at export:
+  the share count changes with the premium, so in Excel use Goal Seek.
+
+**Hypothetical example: Target buys Dollar General** (14 October 2026 data, defaults above, Yahoo
+forward EPS for both). Offer $156.25 (25% premium, P/E 18.8x against Target's 15.9x), 50% stock.
+Year 1 EPS falls from $9.55 to **$8.66 including deal amortization (-9.3%)** but rises to **$9.70
+excluding it (+1.6%)**; Year 2: -5.8% and +4.8%. The synergies needed to break even are $1.73bn a year
+(the default assumes $0.44bn), the breakeven premium is 2.4%, Dollar General holders would own 20% and
+debt would be 2.9x EBITDA. The quick check agrees (the target earns 5.3% on the offer price, the
+payment costs about 5.5%). Only the amortization of $0.76bn a year separates "dilutive" from
+"accretive": which EPS a company quotes decides how the deal sounds.
+
+**The earnings basis can reverse the answer: Coca-Cola buys Keurig Dr Pepper** (same date, same
+defaults, 50% stock). With Yahoo's analyst consensus (KO $3.52, KDP $2.53, offer P/E 16.1x) Year 1 EPS rises
+**+2.8% incl. / +7.4% excl.** deal amortization and no synergies are needed. With trailing net
+income (KO $3.33, KDP $0.99, offer P/E 41.3x) it falls **-10.3% incl. / -5.5% excl.** and about $4.1bn
+of yearly synergies would be needed. The gap is Keurig Dr Pepper's trailing earnings per share
+($0.99) against analysts' forward EPS ($2.53): Yahoo's forward figure is adjusted, trailing net income
+includes charges (I did not look into Keurig Dr Pepper's filings for the cause). Either basis can be
+right; what matters is that an "accretive" claim names its earnings basis as well as its EPS definition.
+Leverage is 3.7x, so the app warns that the borrowing spread would be higher.
+
+**A real deal: Dick's Sporting Goods buys Foot Locker (announced 15 May 2025).** Choose "Load example:
+DKS-FL (2025)" in the M&A tab. Every input is in `data/merger_examples.csv` with its source (document,
+section and URL). Sources: Dick's 8-K of 15 May 2025 (Ex.99.2, investor presentation), Foot Locker's merger
+proxy (DEFM14A, 11 July 2025: Dick's unaudited pro forma financial information, Foot Locker management
+projections) and the 10-K and Q1 10-Q of both companies (values from SEC's XBRL data).
+- **Terms:** $24.00 in cash per share (or 0.1168 Dick's shares), equity value about $2.4bn, enterprise
+  value about $2.5bn (about 6.1x fiscal 2024 adjusted EBITDA), an 80.3% premium to Foot Locker's $13.31
+  close on 13 May 2025; financed with $1.732bn of new unsecured senior notes plus cash on hand ($56.4m of
+  one-time transaction costs); $100-125m of cost synergies in the medium term; Dick's pro forma
+  purchase accounting amortizes only $0.9m a year (of $220m identifiable intangibles, $210m are trademarks
+  that are not amortized). The model uses all-cash (Dick's pro forma Scenario A), a 26% tax rate (the rate
+  in Dick's pro forma), a financing cost of 6.4% (derived from the tax effect of the financing adjustment
+  in the pro forma) and the midpoint of the synergies.
+- **What Dick's said:** the deal is "accretive to EPS in the first full fiscal year post-close (excludes
+  transaction and other one-time costs to achieve synergies)". No number is given.
+- **Dick's own pro forma, fiscal 2024 actuals, no synergies, one-time costs included:** EPS $14.05 falls
+  to $12.61 (-10.2%). On the same basis (no synergies, one-time costs left out) the model gives -7.6%; the
+  gap is the one-time and purchase-accounting items (about $53m after tax) the model leaves out, partly
+  offset by the interest the model deducts on the cash used, which Dick's pro forma does not.
+
+| Foot Locker earnings basis | Foot Locker EPS, Year 1 | Year 1: EPS incl. / excl. deal amortization | Year 2, incl. |
+|---|---|---|---|
+| (a) trailing twelve months from the filings | -$3.77 | -36.2% / -36.2% | -32.6% |
+| (b) management projections (DEFM14A), derived | $2.89 | +18.7% / +18.8% | +29.5% |
+| (b') management's lower scenario (DEFM14A), derived | $2.45 | +15.1% / +15.1% | +24.1% |
+
+Dick's earnings are trailing twelve months ($14.17) in all three rows: no forecast for it is in the
+documents read. In (b) the target's net income is derived from management's projected *adjusted* EBITDA
+for fiscal 2026E and 2027E: (EBITDA - D&A - interest) x (1 - 26%), with D&A and interest held at their
+fiscal 2024 level (illustrative).
+- **Which basis is comparable to Dick's expectation? (b).** Dick's statement is about the *first full
+  fiscal year after closing* (fiscal 2026, for a second-half-2025 close), *excluding one-time costs*, and with
+  the cost synergies; (b) is Foot Locker's recovery plan for that year, and the model reports the
+  one-time costs separately. Basis (a) is a different question: Foot Locker's last twelve months include a
+  $363m net loss in the first quarter of fiscal 2025 (with $273m of impairment charges, from the 10-Q), so
+  it measures the starting point, not the first full year, and it dilutes EPS at any price.
+- **Foot Locker's low earnings are the story.** At $24.00 the offer is a multiple of earnings that is
+  meaningless (negative on trailing earnings) and about 8x derived FY2026E earnings, so the deal works
+  only if Foot Locker recovers: management's plan lifts adjusted EBITDA from about $410m (fiscal 2024) to $591m
+  in fiscal 2026E. Foot Locker's board asked for the lower scenario ($534m) because of tariffs and weak
+  first-quarter results, and the deal is still accretive in the model. The caveats: both (b) cases are built
+  from adjusted EBITDA, which excludes items (such as stock compensation) that GAAP earnings include; and
+  the model, which gives a number where Dick's gave only "accretive", agrees on the sign, not on size.
+
 ### Data quality checks
 Missing fields, zero or negative EBITDA, losses (P/E excluded), negative equity, price outside
 the 52-week range, price × shares vs market cap, our EV vs Yahoo's EV, reporting currency,
@@ -401,6 +516,13 @@ EBITDAR, i.e. before rent) is also consistent, but Yahoo does not report rent fo
   cyclical industries such as energy, where those years may sit at a high or low point of the
   commodity cycle. For ExxonMobil the default Gordon value was $299 against a $172 price, helped by
   a low beta (0.21) and so a low WACC (6.2%). Review the margin, capex and WACC inputs by hand.
+- **M&A**: the target's data comes from Yahoo like the rest of the app, so a company without a lease
+  line (for example Monster Beverage) gives N/A. Yahoo's forward EPS is usually adjusted (non-GAAP),
+  and the result can change sign with the earnings basis (see Coca-Cola / Keurig Dr Pepper). Fiscal
+  years are not calendarised, the purchase price allocation is simplified, and the M&A Excel is a
+  separate workbook with a static breakeven premium. The Dick's / Foot Locker inputs are historical (May 2025,
+  from the filings); the Foot Locker projection-based earnings are derived with illustrative D&A, interest and
+  tax assumptions, and Dick's has no forecast in the documents read.
 - **Banks and insurers**: Yahoo reports no EBITDA, lease or capex lines for them, so EV multiples,
   the DCF and the LBO stay N/A; P/E and P/B are shown instead.
 
@@ -415,6 +537,7 @@ charts.py              Plotly charts (football field, sensitivity heatmap, scena
 scenarios.py           Bear / Base / Bull scenarios and the probability-weighted value
 precedents.py          precedent transactions: loading, filters, EV/EBITDA range
 lbo.py                 LBO: sources & uses, debt schedule, IRR / MOIC, maximum price
+merger.py              M&A: accretion / dilution, breakevens, EPS bridge, real-deal examples
 peers.py               peer suggestions: GICS sub-industry, sector fallback, size, curated groups
 build_universe.py      downloads the S&P 500 list (Wikipedia) and market caps (Yahoo)
 build_snapshot.py      saves the fallback data for every S&P 500 company (data/snapshot/)
@@ -422,6 +545,7 @@ export.py              Excel export (DCF, WACC, Scenarios and LBO as live formul
 app.py                 Streamlit app
 data/manual_overrides.csv
 data/precedents.csv    precedent transactions with SEC sources
+data/merger_examples.csv  Dick's / Foot Locker (2025): every input with its SEC source
 data/sp500_universe.csv  S&P 500 constituents, GICS and market caps (source and dates in its header)
 data/curated_peers.csv analyst-chosen peer groups with their rationale
 data/cache/            downloaded data (not in git)
@@ -444,6 +568,7 @@ python data_loader.py            # snapshot, annual history and data quality rep
 python data_loader.py --refresh  # ignore the 24h cache and download again
 python data_loader.py --refresh --save-snapshot   # also update the committed fallback data (default set)
 python build_snapshot.py --all   # saved fallback data for every S&P 500 company (see Deploying)
+python merger.py TGT DG          # merger model in the terminal (hypothetical example)
 python build_universe.py         # refresh the S&P 500 list and market caps (~10 min)
 python comps.py                  # comparable companies analysis
 python dcf.py                    # DCF valuation in the terminal

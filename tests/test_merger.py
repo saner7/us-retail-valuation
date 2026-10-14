@@ -165,3 +165,76 @@ def test_excel_merger_sheet_matches_python(tmp_path, changes):
                            ("B52", r["sources_uses"]["sources"]["New debt"] / 1e6),
                            ("B53", r["new_shares"] / 1e6), ("B58", r["ppa"]["annual_amortisation"] / 1e6)]:
         assert ws[cell].value == pytest.approx(expected, rel=1e-9), cell
+
+
+@pytest.mark.skipif(shutil.which("soffice") is None, reason="LibreOffice not installed")
+def test_excel_matches_python_with_direct_inputs(tmp_path):
+    acq, tgt = {**ACQ, "name": "Buyer", "eps_source": "test"}, {**TGT, "name": "Target", "eps_source": "test"}
+    inp = inputs(stock_pct=0.0, cost_synergies=6.0, new_debt=120.0, fees_amount=2.5, amortisation_per_year=0.4)
+    r = merger.run(acq, tgt, inp)
+    src = tmp_path / "ma.xlsx"
+    src.write_bytes(export.build_merger_workbook(acq, tgt, inp, r, merger.breakeven_premium(acq, tgt, inp)))
+    subprocess.run(["soffice", "--headless", "--convert-to", "xlsx", "--outdir", str(tmp_path / "out"), str(src)],
+                   check=True, capture_output=True, timeout=180)
+    ws = load_workbook(tmp_path / "out" / "ma.xlsx", data_only=True)["M&A"]
+    y1 = r["years"][0]
+    for cell, expected in [("B52", 120.0 / 1e6), ("B46", 2.5 / 1e6), ("B58", 0.4 / 1e6),
+                           ("B51", r["sources_uses"]["sources"]["Buyer's excess cash"] / 1e6),
+                           ("B86", y1["accretion_gaap_pct"]), ("B88", y1["accretion_cash_pct"])]:
+        assert ws[cell].value == pytest.approx(expected, rel=1e-9), cell
+
+
+def test_direct_inputs_override_the_model_s_own_working():
+    r = merger.run(ACQ, TGT, inputs(stock_pct=0.0, new_debt=1000.0, fees_amount=3.0, amortisation_per_year=0.5))
+    su = r["sources_uses"]
+    # cash needed = 250 + 3; new debt cannot exceed it, and the buyer's cash covers the rest (here: nothing)
+    assert su["sources"]["New debt"] == pytest.approx(253) and su["sources"]["Buyer's excess cash"] == pytest.approx(0)
+    assert su["uses"]["Transaction fees"] == 3.0 and r["ppa"]["annual_amortisation"] == 0.5
+    assert r["ppa"]["intangibles"] != r["ppa"]["intangibles"]            # NaN: amortisation was given directly
+    part = merger.run(ACQ, TGT, inputs(stock_pct=0.0, new_debt=200.0))["sources_uses"]["sources"]
+    assert part["New debt"] == 200 and part["Buyer's excess cash"] == pytest.approx(50)   # 250 + fees 0 - 200
+
+
+DKS_FL = "DKS-FL-2025"
+
+
+def test_example_file_has_a_source_for_every_number():
+    df = merger.load_examples()
+    assert merger.example_names(df) == [DKS_FL] and len(df) > 50
+    assert (df["source"].str.len() > 20).all() and (df["unit"] != "").all()
+    numeric = df[df["unit"] != "text"]
+    assert numeric["source"].str.contains("sec.gov").all()                 # every figure points to a filing
+    assert df[df["note"].str.startswith("DERIVED")]["field"].tolist() == ["t_ebitda_adjusted", "t_impairment_q"]
+
+
+def test_example_trailing_twelve_months_and_inputs():
+    df = merger.load_examples()
+    acq, tgt, inp, f = merger.example_pair(df, DKS_FL, "ttm", short_rate=0.04)
+    assert acq["eps"] * acq["shares"] == pytest.approx(1165.308e6 - 275.295e6 + 264.288e6)    # 10-K + Q1 - Q1 a year ago
+    assert tgt["eps"] * tgt["shares"] == pytest.approx(12e6 - 8e6 - 363e6) and tgt["eps"] < 0
+    assert tgt["revenue"] == pytest.approx(7988e6 - 1879e6 + 1794e6)
+    assert acq["ebitda"] == pytest.approx(1473.932e6 - 330.799e6 + 366.116e6 + 400.409e6 - 91.477e6 + 97.860e6)
+    assert inp["offer_price"] == 24.0 and inp["stock_pct"] == 0 and inp["new_debt"] == 1732e6
+    assert inp["debt_rate"] == pytest.approx(28.8e6 / 0.26 / 1732e6) and inp["cost_synergies"] == pytest.approx(112.5e6)
+    r = merger.run(acq, tgt, inp)
+    assert r["premium"] == pytest.approx(24 / 13.31 - 1)                    # the proxy's 80.3% premium
+    assert r["sources_uses"]["sources"]["Buyer's excess cash"] == pytest.approx(95.278e6 * 24 + 56.4e6 - 1732e6)
+    assert r["ppa"]["annual_amortisation"] == 885e3
+
+
+def test_example_results_by_earnings_basis():
+    df = merger.load_examples()
+    results = {}
+    for basis in ("ttm", "mgmt", "mgmt_downside"):
+        acq, tgt, inp, f = merger.example_pair(df, DKS_FL, basis, short_rate=0.04)
+        results[basis] = merger.run(acq, tgt, inp)["years"]
+    assert results["ttm"][0]["accretion_gaap_pct"] < -0.3                      # Foot Locker's TTM is a loss
+    assert 0.15 < results["mgmt_downside"][0]["accretion_gaap_pct"] < results["mgmt"][0]["accretion_gaap_pct"]
+    acq, tgt, inp, f = merger.example_pair(df, DKS_FL, "mgmt", 0.04)
+    assert tgt["eps"] == pytest.approx((591e6 - 202e6 - 17e6) * 0.74 / 95.278e6)   # (EBITDA - D&A - interest)(1 - tax)
+    assert tgt["growth_y2"] == pytest.approx((702 - 202 - 17) / (591 - 202 - 17) - 1)
+    # mechanics check against Dick's own pro forma on fiscal 2024 actuals (no synergies)
+    acq, tgt, inp, f = merger.example_pair(df, DKS_FL, "fy2024", 0.04)
+    assert acq["eps"] == pytest.approx(14.05, abs=0.005)                       # matches the 10-K
+    check = merger.run(acq, tgt, inp, synergies_on=False)["years"][0]["accretion_gaap_pct"]
+    assert -0.09 < check < -0.06 and f["ref_pf_eps_fy2024_cash"] / f["ref_eps_fy2024_standalone"] - 1 < check

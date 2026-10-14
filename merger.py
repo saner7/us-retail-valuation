@@ -9,7 +9,7 @@ is accretive when the target's earnings, plus synergies, more than cover that.
     pro forma net income = buyer NI + target NI
                            + (synergies - interest on new debt - interest lost on cash
                               + target interest saved if its debt is refinanced) x (1 - tax)
-                           - amortisation of new intangibles x (1 - tax)        (GAAP only)
+                           - amortisation of new intangibles x (1 - tax)        (only in the 'incl.' EPS)
     pro forma EPS        = pro forma NI / (buyer shares + new shares)
 
 Run `python merger.py TGT DG` for a hypothetical example.
@@ -24,13 +24,19 @@ import config
 import dcf
 import summary
 
+# The two EPS definitions, as shown to the user (internal keys stay "gaap" / "cash")
+LABEL_INCL = "EPS incl. deal amortization"
+LABEL_EXCL = "EPS excl. deal amortization (cash EPS)"
+EPS_NOTE = ("Yahoo's forward EPS is usually an adjusted (non-GAAP) figure, so the 'incl. deal amortization' line is "
+            "not reported GAAP earnings: it is that EPS after the amortization of the intangibles acquired in the deal.")
+
 SIMPLIFICATIONS = [
     "Earnings: Yahoo's forward EPS (analyst consensus for the next fiscal year) when available, otherwise "
     "trailing-twelve-month net income with one-offs removed. Year 2 grows each company's earnings with its "
     "DCF Base revenue growth.",
     "Analyst consensus EPS is usually an adjusted (non-GAAP) figure, which can be well above trailing "
-    "GAAP earnings (when a company has had impairments or one-offs). 'GAAP EPS' in this model therefore means "
-    "after the deal's amortisation, not necessarily GAAP earnings of the two companies.",
+    "GAAP earnings (when a company has had impairments or one-offs). '" + LABEL_INCL + "' therefore means "
+    "EPS after the deal's amortization, not reported GAAP earnings of the two companies.",
     "No calendarisation: if the two companies' fiscal years end in different months, their forward EPS cover "
     "different twelve-month periods.",
     "Purchase price allocation, simplified: a share of the price above the target's book value becomes "
@@ -101,20 +107,26 @@ def run(acq: dict, tgt: dict, inp: dict, synergies_on: bool = True) -> dict:
     """The full model for Years 1 and 2."""
     offer = inp["offer_price"] if inp.get("offer_price") else tgt["price"] * (1 + inp["premium"])
     equity_value = offer * tgt["shares"]
-    fees = inp["fee_pct"] * (equity_value + tgt["net_debt"])
+    # optional direct inputs (e.g. from a real deal's filings): the fees, the new debt and the yearly amortisation
+    fees = inp["fees_amount"] if inp.get("fees_amount") is not None else inp["fee_pct"] * (equity_value + tgt["net_debt"])
     refi = tgt["debt"] if inp["refinance_target_debt"] else 0.0
     stock = inp["stock_pct"] * equity_value
     cash_needed = equity_value - stock + fees + refi
     excess_cash = max(acq["cash"] - inp["min_cash_pct"] * acq["revenue"], 0.0)
-    cash_used = min(excess_cash, cash_needed)
-    new_debt = cash_needed - cash_used
+    if inp.get("new_debt") is not None:
+        new_debt = min(max(inp["new_debt"], 0.0), cash_needed)
+        cash_used = cash_needed - new_debt
+    else:
+        cash_used = min(excess_cash, cash_needed)
+        new_debt = cash_needed - cash_used
     new_shares = stock / acq["price"]
     pf_shares = acq["shares"] + new_shares
     tax = inp["tax_rate"]
 
     excess = max(equity_value - tgt["book_equity"], 0.0)
     intangibles = inp["intangibles_pct"] * excess
-    amortisation = intangibles / inp["amortisation_years"]
+    amortisation = inp["amortisation_per_year"] if inp.get("amortisation_per_year") is not None \
+        else intangibles / inp["amortisation_years"]
     run_rate = inp["cost_synergies"] + inp["revenue_synergies"]
 
     years = []
@@ -160,7 +172,9 @@ def run(acq: dict, tgt: dict, inp: dict, synergies_on: bool = True) -> dict:
             "sources": {"New buyer shares": stock, "Buyer's excess cash": cash_used, "New debt": new_debt}},
         "new_shares": new_shares, "pro_forma_shares": pf_shares,
         "ownership": {"buyer": acq["shares"] / pf_shares, "target": new_shares / pf_shares},
-        "ppa": {"excess_over_book": excess, "intangibles": intangibles, "goodwill": excess - intangibles,
+        "ppa": {"excess_over_book": excess,
+                "intangibles": np.nan if inp.get("amortisation_per_year") is not None else intangibles,
+                "goodwill": np.nan if inp.get("amortisation_per_year") is not None else excess - intangibles,
                 "annual_amortisation": amortisation},
         "one_off": {"transaction_fees": fees, "integration_costs": inp["integration_cost_x"] * run_rate},
         "years": years, "credit": credit, "tax_rate": tax,
@@ -189,7 +203,7 @@ def warnings(r: dict, acq: dict, tgt: dict) -> list:
 
 
 def breakeven_premium(acq: dict, tgt: dict, inp: dict, low: float = -0.5, high: float = 3.0) -> float:
-    """The highest premium at which Year 1 GAAP EPS (synergies included) is unchanged.
+    """The highest premium at which Year 1 EPS incl. deal amortization (synergies included) is unchanged.
     NaN if the deal is dilutive even at `low` or still accretive at `high`."""
     def acc(p):
         return run(acq, tgt, {**inp, "premium": p, "offer_price": None})["years"][0]["accretion_gaap"]
@@ -233,7 +247,7 @@ def explain(qc: dict, inp: dict) -> str:
             f"the offer price (offer P/E {qc['offer_pe']:.1f}x); the deal is paid for with shares that 'cost' "
             f"{qc['stock_cost']:.1%} (1 / buyer P/E {qc['buyer_pe']:.1f}x) and cash or debt that costs "
             f"{qc['cash_cost_after_tax']:.1%} after tax, {qc['weighted_cost']:.1%} weighted. So the rule says "
-            f"{verdict}. The model without synergies (cash EPS, Year 1) is {model}: ")
+            f"{verdict}. The model without synergies ({LABEL_EXCL}, Year 1) is {model}: ")
     if qc["consistent"]:
         return text + "consistent."
     return text + ("not consistent, because fees are financed with debt or cash, and the excess cash and the "
@@ -254,7 +268,7 @@ def missing_inputs(acq: dict, tgt: dict, inp: dict) -> list:
 def bridge(r: dict, acq: dict, year: int = 1, basis: str = "gaap") -> pd.DataFrame:
     """Pro forma EPS bridge for one year, per buyer share (what the waterfall chart shows):
     buyer EPS -> target earnings -> synergies -> interest on new debt -> interest lost on cash
-    (-> target interest saved) (-> amortisation, GAAP only) -> the effect of the new shares -> pro forma EPS.
+    (-> target interest saved) (-> amortisation, only in the 'incl.' EPS) -> the effect of the new shares -> pro forma EPS.
     Columns: step, value, kind (total / change). The steps add up to the pro forma EPS."""
     y = r["years"][year - 1]
     t = r["tax_rate"]
@@ -313,6 +327,87 @@ def sensitivity_synergy_premium(acq: dict, tgt: dict, inp: dict, basis: str = "g
     return t
 
 
+# ---------------------------------------------------------------------------
+# Real transactions from SEC filings (data/merger_examples.csv)
+# ---------------------------------------------------------------------------
+
+EXAMPLES_PATH = config.DATA_DIR / "merger_examples.csv"
+EXAMPLE_BASES = {
+    "ttm": "(a) Trailing twelve months from the SEC filings",
+    "mgmt": "(b) Foot Locker management projections (DEFM14A), Dick's TTM",
+    "mgmt_downside": "(b') Foot Locker's additional, lower scenario (DEFM14A), Dick's TTM",
+    "fy2024": "Mechanics check: fiscal 2024 actuals, no synergies (compare with Dick's own pro forma)",
+}
+
+
+def load_examples(path=None) -> pd.DataFrame:
+    """Long table: example, field, value, unit, source, note. Every number carries its source."""
+    return pd.read_csv(path or EXAMPLES_PATH, comment="#", dtype=str, keep_default_na=False)
+
+
+def example_names(df: pd.DataFrame) -> list:
+    return list(dict.fromkeys(df["example"]))
+
+
+def example_facts(df: pd.DataFrame, name: str) -> dict:
+    """{field: value} (numbers as floats, text as is) for one example."""
+    out = {}
+    for _, r in df[df["example"] == name].iterrows():
+        try:
+            out[r["field"]] = float(r["value"])
+        except ValueError:
+            out[r["field"]] = r["value"]
+    return out
+
+
+def example_sources(df: pd.DataFrame, name: str) -> pd.DataFrame:
+    return df[df["example"] == name][["field", "value", "unit", "source", "note"]].reset_index(drop=True)
+
+
+def _ttm(f: dict, side: str, metric: str) -> float:
+    """Last fiscal year + the latest quarter - the same quarter a year earlier."""
+    return f[f"{side}_{metric}_fy"] + f[f"{side}_{metric}_q"] - f[f"{side}_{metric}_qp"]
+
+
+def example_pair(df: pd.DataFrame, name: str, basis: str = "ttm", short_rate: float = 0.04) -> tuple:
+    """(acquirer, target, inputs, facts) for a real deal, in the same shapes the model uses elsewhere.
+    basis "ttm": both companies' trailing twelve months from the filings, held flat.
+    basis "mgmt" / "mgmt_downside": the target's earnings derived from its management's projected adjusted
+    EBITDA for the first two full fiscal years after closing: (EBITDA - D&A - interest) x (1 - tax) (illustrative,
+    D&A and interest held at the last fiscal year); the buyer stays on its trailing twelve months."""
+    f = example_facts(df, name)
+    tax = f["tax_rate"]
+    b_ni, t_ni = _ttm(f, "b", "ni"), _ttm(f, "t", "ni")
+    acq = {"ticker": f["buyer_ticker"], "name": f["buyer_name"], "price": f["buyer_price"], "shares": f["b_shares"],
+           "eps": b_ni / f["b_shares"], "eps_source": "TTM net income from SEC filings (10-K + 10-Qs)",
+           "growth_y2": 0.0, "revenue": _ttm(f, "b", "revenue"), "ebitda": _ttm(f, "b", "opinc") + _ttm(f, "b", "da"),
+           "debt": f["b_debt"], "cash": f["b_cash"], "net_debt": f["b_debt"] - f["b_cash"],
+           "book_equity": f["b_equity"], "interest": _ttm(f, "b", "interest"), "tax_rate": tax,
+           "fiscal_year_end": f["fiscal_year_end"], "currency": "USD"}
+    eps, growth, source = t_ni / f["t_shares"], 0.0, "TTM net income from SEC filings (10-K + 10-Qs)"
+    if basis == "fy2024":       # the fiscal year Dick's own pro forma statements use
+        acq.update(eps=f["b_ni_fy"] / f["b_shares_fy"], shares=f["b_shares_fy"],
+                   eps_source="fiscal 2024 net income (10-K)")
+        eps, source = f["t_ni_fy"] / f["t_shares"], "fiscal 2024 net income (10-K)"
+    elif basis != "ttm":
+        key = "t_ebitda_alt" if basis == "mgmt_downside" else "t_ebitda_proj"
+        ni1, ni2 = [(f[f"{key}_fy{y}"] - f["t_da_fy"] - f["t_interest_fy"]) * (1 - tax) for y in (2026, 2027)]
+        eps, growth = ni1 / f["t_shares"], ni2 / ni1 - 1
+        source = ("derived from management's projected adjusted EBITDA (DEFM14A): (EBITDA - D&A - interest) x "
+                  f"(1 - {tax:.0%}), FY2026E; Year 2 = FY2027E")
+    tgt = {"ticker": f["target_ticker"], "name": f["target_name"], "price": f["target_unaffected_price"],
+           "shares": f["t_shares"], "eps": eps, "eps_source": source, "growth_y2": growth,
+           "revenue": _ttm(f, "t", "revenue"), "ebitda": f["t_ebitda_adjusted"], "debt": f["t_net_debt"] + f["t_cash"],
+           "cash": f["t_cash"], "net_debt": f["t_net_debt"], "book_equity": f["t_equity"],
+           "interest": f["t_interest_fy"], "tax_rate": tax, "fiscal_year_end": f["fiscal_year_end"], "currency": "USD"}
+    inp = default_inputs(acq, tgt, risk_free=0.0, short_rate=short_rate)
+    notes_rate = (f["fin_tax_effect_fy"] / tax) / f["new_debt"]          # all-in yearly financing cost / notes issued
+    inp.update(offer_price=f["offer_price"], stock_pct=f["stock_pct"], debt_rate=notes_rate, new_debt=f["new_debt"],
+               fees_amount=f["fees_amount"], amortisation_per_year=f["amortisation_per_year"], tax_rate=tax,
+               cost_synergies=(f["cost_synergies_low"] + f["cost_synergies_high"]) / 2, refinance_target_debt=False)
+    return acq, tgt, inp, f
+
+
 def main():
     import sys
 
@@ -345,8 +440,8 @@ def main():
     for y in r["years"]:
         print(f"Year {y['year']}: buyer NI {bn(y['buyer_ni'])} + target NI {bn(y['target_ni'])} + synergies "
               f"{bn(y['synergies'])} - new interest {bn(y['new_debt_interest'])} - lost interest "
-              f"{bn(y['interest_lost_on_cash'])} (pre-tax) -> GAAP EPS ${y['eps_gaap']:.2f} vs ${y['standalone_eps']:.2f}"
-              f" ({y['accretion_gaap_pct']:+.1%}); cash EPS ${y['eps_cash']:.2f} ({y['accretion_cash_pct']:+.1%}); "
+              f"{bn(y['interest_lost_on_cash'])} (pre-tax) -> EPS incl. amortization ${y['eps_gaap']:.2f} vs ${y['standalone_eps']:.2f}"
+              f" ({y['accretion_gaap_pct']:+.1%}); EPS excl. amortization ${y['eps_cash']:.2f} ({y['accretion_cash_pct']:+.1%}); "
               f"breakeven synergies {bn(y['breakeven_synergies'])} (run rate {bn(y['breakeven_run_rate'])})")
     print(f"Breakeven premium (Year 1, with synergies): {breakeven_premium(acq, tgt, inp):.1%}")
     c = r["credit"]
